@@ -204,10 +204,8 @@ class spss_data():
                 vars[i] = var.decode('utf-8')
         return vars
 
-
 # }}}
 # {{{ Extended DataFrame    }}}
-
 
 class eDataFrame(pd.DataFrame):
     def __init__(self,  *args, **kwargs):
@@ -230,7 +228,7 @@ class eDataFrame(pd.DataFrame):
 
 
     def __summary__(self, vars, funs):
-        res = (self.d
+        res = (self
                .filter(vars)
                .apply(funs)
                .transpose()
@@ -241,7 +239,7 @@ class eDataFrame(pd.DataFrame):
 
 
     def __summary_group__(self, vars, funs, groups=None, wide_format=None):
-        res=(self.d
+        res=(self
              .filter(vars+groups)
              .groupby(groups)
              .agg(funs)
@@ -319,7 +317,7 @@ class eDataFrame(pd.DataFrame):
                 p = df['freq']/100
                 df['stdev'] = 100*np.sqrt(p*(1-p)/n)
                 return df
-            res=(self.d
+            res=(self
                  .groupby(vars)
                  .size()
                  .reset_index(name='n', drop=False)
@@ -338,7 +336,7 @@ class eDataFrame(pd.DataFrame):
                 p = df['freq']/100
                 df['stdev'] = 100*np.sqrt(p*(1-p)/n)
                 return df
-            res = (self.d
+            res = (self
                    .groupby(vars)
                    .size()
                    .reset_index(name='n', drop=False)
@@ -353,10 +351,9 @@ class eDataFrame(pd.DataFrame):
 
     def corr_pairwise(self, vars, long_format=True, lower_tri=False):
         assert isinstance(vars, list), "'vars' need to be a list"
-        res = (
-            self.d
-            .filter(vars)
-            .corr()
+        res = (self
+               .filter(vars)
+               .corr()
         )
         if long_format:
             res.values[np.triu_indices_from(res, 0)] = np.nan
@@ -366,21 +363,11 @@ class eDataFrame(pd.DataFrame):
             res.values[np.triu_indices_from(res, 0)] = np.nan
         return res
 
-
-    def __str__(self):
-        print(self.d)
-        
-    def __repr__(self):
-        print(self.d)
-        return ""
-        
     def names(self, print_long=False):
         if print_long:
-            for col in list(df.d):
+            for col in list(self):
                 print(col)
         else:
-            print(print(list(df.d)))
-            
-
+            print(print(list(self)))
 
 # }}}
