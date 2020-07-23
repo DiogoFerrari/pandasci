@@ -1,1 +1,8 @@
 
+* Instalation (from Git)
+
+#+BEGIN_SRC 
+pip install git+https://github.com/DiogoFerrari/pandasci.git#egg=pandasci
+#+END_SRC
+
+
