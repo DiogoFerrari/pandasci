@@ -4,7 +4,7 @@ import re
 import os
 
 
-# {{{ spss  }}}
+# {{{ spss                  }}}
 
 class spss_data():
     '''

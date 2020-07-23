@@ -1,7 +1,7 @@
 
 * Overview
 
-This package contains some classes and functions to facilitate data wrangling and exploratory data analysis (EDA) in python.
+This package contains some classes and functions to facilitate data wrangling and exploratory data analysis (EDA) in python. It contains an extension of pandas DataFrame.
 
 * Instalation
 
