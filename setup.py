@@ -1,7 +1,6 @@
 from setuptools import setup
 
 setup(
-    # Needed to silence warnings (and to be a worthwhile package)
     name='pandasci',
     url='https://github.com/DiogoFerrari/pandasci',
     author='Diogo Ferrari',
