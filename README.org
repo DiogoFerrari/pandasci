@@ -1,5 +1,11 @@
 
-* Instalation (from Git)
+* Overview
+
+This package contains some classes and functions to facilitate data wrangling and exploratory data analysis (EDA) in python.
+
+* Instalation
+
+To install from module's Git repo:
 
 #+BEGIN_SRC 
 pip install git+https://github.com/DiogoFerrari/pandasci.git#egg=pandasci
