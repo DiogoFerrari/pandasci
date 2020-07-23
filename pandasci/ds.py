@@ -1,7 +1,8 @@
 import pandas as pd
+import numpy as np
 import re
 import os
-import numpy as np
+
 
 # {{{ spss  }}}
 
@@ -205,12 +206,20 @@ class spss_data():
 
 
 # }}}
-# {{{ ds    }}}
+# {{{ Extended DataFrame    }}}
 
-class ds():
-    def __init__(self, fn, sep=";", decimal="."):
-        self.__fn = fn
-        self.d = pd.read_csv(fn, sep=';', index_col=False, decimal='.')
+
+class eDataFrame(pd.DataFrame):
+    def __init__(self,  *args, **kwargs):
+        # use the __init__ method from DataFrame to ensure
+        # that we're inheriting the correct behavior
+        super(eDataFrame, self).__init__(*args, **kwargs)
+
+    # this method is makes it so our methoeDataFrame return an instance
+    # of eDataFrame, instead of a regular DataFrame
+    @property
+    def _constructor(self):
+        return eDataFrame
 
     def summary(self, vars, funs, groups=None, wide_format=None):
         if groups:
@@ -339,6 +348,22 @@ class ds():
                    .apply(compute_stdev)
                    .sort_values(by=(condition_on+['freq']),  ascending=True)
             )
+        return res
+
+
+    def corr_pairwise(self, vars, long_format=True, lower_tri=False):
+        assert isinstance(vars, list), "'vars' need to be a list"
+        res = (
+            self.d
+            .filter(vars)
+            .corr()
+        )
+        if long_format:
+            res.values[np.triu_indices_from(res, 0)] = np.nan
+            res = res.unstack().reset_index( drop=False).dropna()
+            res.columns = ['v1', 'v2', 'corr']
+        elif lower_tri:
+            res.values[np.triu_indices_from(res, 0)] = np.nan
         return res
 
 
