@@ -3,6 +3,9 @@ import numpy as np
 from scipy import stats
 import re
 import os
+# dply-like operations
+from plydata.expressions import case_when
+from plydata import define
 
 
 # {{{ spss                  }}}
@@ -220,6 +223,22 @@ class eDataFrame(pd.DataFrame):
     def _constructor(self):
         return eDataFrame
 
+    # =====================================================
+    # Data wrangling
+    # =====================================================
+    def case_when(self, varname, replace):
+        res = (
+            self >>
+            define(___varname___=case_when(replace))
+            
+        ).rename(columns={"___varname___":varname}, inplace=False)
+        return res
+
+
+    # =====================================================
+    # Statistics
+    # =====================================================
+
     def summary(self, vars, funs, groups=None, wide_format=None):
         if groups:
             res = self.__summary_group__(vars, funs, groups, wide_format)
@@ -404,5 +423,6 @@ class eDataFrame(pd.DataFrame):
                 print(col)
         else:
             print(print(list(self)))
+
 
 # }}}
