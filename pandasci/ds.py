@@ -454,7 +454,6 @@ class eDataFrame(pd.DataFrame):
             tmp = self
         tmp = (tmp
                .query(f"{treat}==['{treat_value}', '{control_value}']")
-               .filter([treat, var, inc])
                .case_when("y", {
                    f"{var}=='{var_value}'": f"1",
                    f"{var}!='{var_value}'": f"0",
@@ -508,6 +507,5 @@ class eDataFrame(pd.DataFrame):
                 print(col)
         else:
             print(print(list(self)))
-
 
 # }}}
