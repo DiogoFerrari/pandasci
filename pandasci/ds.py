@@ -6,7 +6,13 @@ import os
 # dply-like operations
 from plydata.expressions import case_when
 from plydata import define
-
+# 
+from scipy.stats import norm as dnorm
+from scipy.stats import t as tdist
+from statsmodels.stats.proportion import proportion_effectsize as prop_esize
+from statsmodels.stats.proportion import proportions_ztest as prop_ztest
+from statsmodels.stats.proportion import proportions_chisquare as prop_chisqtest
+from statsmodels.stats.proportion import proportion_confint as ci
 
 # {{{ spss                  }}}
 
@@ -415,6 +421,87 @@ class eDataFrame(pd.DataFrame):
         lo_z, hi_z = r_z-z*se, r_z+z*se
         lo, hi = np.tanh((lo_z, hi_z))
         return {'cor':r, 'p-value':p, 'low':lo, "high":hi}
+    
+
+    def prop_test(self, var, var_value,
+                  treat, treat_value, control_value,
+                  group_regexp=None,
+                  alpha=.05,
+                  test = ['chisq', 'z', 't'],
+                  tail='two'):
+        '''
+        Compute test statistics of difference in proportions
+
+        Inputs:
+            var  : string with the outcome variable name to compute proporitons
+            var_value : string/numeric value with value of the outcome 
+                        variable to compute difference between treatment
+                        and control groups
+            treat : string with the name of the treatment variable
+            treat_value : value of the treatment in the var 'treat'
+            control_value : value of the control in the var 'treat'
+            group_regexp  : string for subset the data set using 'query'
+                            function
+            alpha : alpha-level of the test
+            test : string with the test statistics to use (chisq, z, t)
+            tail : string with either 'one' or 'two' 
+            
+        '''
+        assert tail in ['one', 'two'], "'tail' must be either 'one' or 'two'"
+        if group_regexp:
+            tmp = self.query(f"{group_regexp}")
+        else:
+            tmp = self
+
+        tmp = (tmp
+               .query(f"{inc}=='{inc_value}'")
+               .query(f"{treat}==['{treat_value}', '{control_value}']")
+               .filter([treat, var, inc])
+               .case_when("y", {
+                   f"{var}=='{var_value}'": f"1",
+                   f"{var}!='{var_value}'": f"0",
+               })
+               .case_when('t', {
+                   f"{treat}=='{treat_value}'": f"1",
+                   f"{treat}=='{control_value}'": f"0",
+               })
+               .filter([var, "y", treat, "t"])
+               .groupby([ "t", "y"])
+               .size()
+               .reset_index(name="n",drop=False)
+        )
+        y1 = float(tmp.loc[(tmp.t==1) & (tmp.y==1), 'n'])
+        n1 = float(tmp.loc[(tmp.t==1) & (tmp.y==0), 'n']) + y1
+        y2 = float(tmp.loc[(tmp.t==0) & (tmp.y==1), 'n'])
+        n2 = float(tmp.loc[(tmp.t==0) & (tmp.y==0), 'n']) + y2
+        p1 = y1/n1
+        p2 = y2/n2
+        sd = np.sqrt( p1*(1-p1)/n1 + p2*(1-p2)/n2 )
+        ATE      = p1 - p2
+        if tail=='two':
+            t = dnorm.ppf(q=1-alpha/2, loc=0, scale=1)
+            # t =  tdist(df).ppf()
+        if tail=='one':
+            t = dnorm.ppf(q=1-alpha, loc=0, scale=1)
+            # t = tdist(df).ppf(1-alpha)
+        # 
+        ATE_low  = ATE - t*sd
+        ATE_high = ATE + t*sd
+        if isinstance(test, list):
+            test = 'chisq'
+        if test == 'chisq':
+            stat_all = prop_chisqtest([y1, y2], [n1, n2])
+            stat   = stat_all[0]
+            pvalue = stat_all[1]
+        return pd.DataFrame({"variable": [var], "variable_value": [var_value],
+                             "group":group_regexp,
+                             'treat_value':[treat_value],
+                             'control_value':[control_value],
+                             "p1":[p1], "p2": [p2],
+                             "ATE":[ATE],
+                             "ATE_low":[ATE_low], "ATE_high":[ATE_high],
+                             "stat": [stat],
+                             'pvalue':[pvalue], 'test':[test]})
     
 
     def names(self, print_long=False):
