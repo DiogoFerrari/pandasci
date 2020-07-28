@@ -449,12 +449,10 @@ class eDataFrame(pd.DataFrame):
         '''
         assert tail in ['one', 'two'], "'tail' must be either 'one' or 'two'"
         if group_regexp:
-            tmp = self.query(f"{group_regexp}")
+            tmp = self.query(group_regexp)
         else:
             tmp = self
-
         tmp = (tmp
-               .query(f"{inc}=='{inc_value}'")
                .query(f"{treat}==['{treat_value}', '{control_value}']")
                .filter([treat, var, inc])
                .case_when("y", {
