@@ -8,6 +8,7 @@ import os
 # dply-like operations
 from plydata.expressions import case_when
 from plydata import define
+from datetime import datetime
 # 
 from scipy.stats import norm as dnorm
 from scipy.stats import t as tdist
@@ -235,19 +236,27 @@ class eDataFrame(pd.DataFrame):
     # Data wrangling
     # =====================================================
     def case_when(self, varname, replace):
-        varname_exists = False
         if varname in self.columns:
             varname_exists = True
-            placeholder_name = f"___{varname}___tmp___"
-            print(placeholder_name)
-            self.rename(columns={varname:placeholder_name }, inplace=True)
+            col_names = self.columns
+        else:
+            varname_exists = False
+        # replace using casewhen
         res = (
             self >>
-            define(___varname___=case_when(replace))
-            
-        ).rename(columns={"___varname___":varname}, inplace=False)
+            define(___newvar_name_placeholder___=case_when(replace))
+        )
+        # remove old var if it existed
         if varname_exists:
-            res = res.drop([placeholder_name ], axis=1)
+            res.drop([varname], axis=1, inplace=True)
+            res = (res
+                   .rename(columns={"___newvar_name_placeholder___":varname},
+                           inplace=False)
+                   .filter(col_names)
+                   )
+        else:
+            res.rename(columns={"___newvar_name_placeholder___":varname},
+                       inplace=True)
         return res
 
 
