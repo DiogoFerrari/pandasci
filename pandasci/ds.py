@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 import savReaderWriter as spss
+import seaborn as sns
 import re
 import os
 # dply-like operations
@@ -234,11 +235,19 @@ class eDataFrame(pd.DataFrame):
     # Data wrangling
     # =====================================================
     def case_when(self, varname, replace):
+        varname_exists = False
+        if varname in self.columns:
+            varname_exists = True
+            placeholder_name = f"___{varname}___tmp___"
+            print(placeholder_name)
+            self.rename(columns={varname:placeholder_name }, inplace=True)
         res = (
             self >>
             define(___varname___=case_when(replace))
             
         ).rename(columns={"___varname___":varname}, inplace=False)
+        if varname_exists:
+            res = res.drop([placeholder_name ], axis=1)
         return res
 
 
@@ -393,7 +402,8 @@ class eDataFrame(pd.DataFrame):
 
     def pearsonr(self, vars, alpha=0.05):
         ''' 
-        Calculate Pearson correlation along with the confidence interval using scipy and numpy
+        Calculate Pearson correlation along with the confidence interval 
+        using scipy and numpy
 
         Parameters
         ----------
@@ -510,3 +520,4 @@ class eDataFrame(pd.DataFrame):
             print(print(list(self)))
 
 # }}}
+
