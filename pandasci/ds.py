@@ -531,11 +531,13 @@ class eDataFrame(pd.DataFrame):
     # =====================================================
     # Utilities
     # =====================================================
-    def to_org(self):
-        s = self.to_csv(sep='|', index=False).replace('\n', '|\n|')
+    def to_org(self, round=4):
+        res = self
+        if round:
+            res = res.round(round)
+        s = res.to_csv(sep='|', index=False).replace('\n', '|\n|')
         s = re.sub(pattern="^", repl="|", string=s)
         s = re.sub(pattern=".$", repl="", string=s)
         print(s)
-
 # }}}
 
