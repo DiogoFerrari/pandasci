@@ -269,7 +269,7 @@ class eDataFrame(pd.DataFrame):
             res = self.__summary_group__(vars, funs, groups, wide_format)
         else:
             res = self.__summary__(vars, funs)
-        return res
+        return eDataFrame(res)
 
 
     def __summary__(self, vars, funs):
@@ -527,6 +527,15 @@ class eDataFrame(pd.DataFrame):
                 print(col)
         else:
             print(print(list(self)))
+
+    # =====================================================
+    # Utilities
+    # =====================================================
+    def to_org(self):
+        s = self.to_csv(sep='|', index=False).replace('\n', '|\n|')
+        s = re.sub(pattern="^", repl="|", string=s)
+        s = re.sub(pattern=".$", repl="", string=s)
+        print(s)
 
 # }}}
 
