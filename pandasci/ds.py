@@ -156,7 +156,7 @@ class spss_data():
         # rename
         if vars_newnames:
             self.rename(data, vars, vars_newnames)
-        return data
+        return eDataFrame(data)
 
 
     # ancillary functions
@@ -391,7 +391,7 @@ class eDataFrame(pd.DataFrame):
                    .apply(compute_stdev)
                    .sort_values(by=(condition_on+['freq']),  ascending=True)
             )
-        return res
+        return eDataFrame(res)
 
 
     def corr_pairwise(self, vars, long_format=True, lower_tri=False):
@@ -535,8 +535,8 @@ class eDataFrame(pd.DataFrame):
         res = self
         if round:
             res = res.round(round)
-        s = res.to_csv(sep='|', index=False).replace('\n', '|\n|')
-        s = re.sub(pattern="^", repl="|", string=s)
+        s = res.to_csv(sep=' | ', index=False).replace('\n', ' | \n | ')
+        s = re.sub(pattern="^", repl=" | ", string=s)
         s = re.sub(pattern=".$", repl="", string=s)
         print(s)
 # }}}
