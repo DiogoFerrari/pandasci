@@ -361,7 +361,7 @@ class eDataFrame(pd.DataFrame):
                 n = df['n_tot']
                 p = df['freq']/100
                 df['stdev'] = 100*np.sqrt(p*(1-p)/n)
-                return df
+                return eDataFrame(df)
             res=(self
                  .groupby(vars)
                  .size()
@@ -380,7 +380,7 @@ class eDataFrame(pd.DataFrame):
                 n = sum(df['n'])
                 p = df['freq']/100
                 df['stdev'] = 100*np.sqrt(p*(1-p)/n)
-                return df
+                return eDataFrame(df)
             res = (self
                    .groupby(vars)
                    .size()
