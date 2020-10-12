@@ -393,6 +393,16 @@ class eDataFrame(pd.DataFrame):
             )
         return eDataFrame(res)
 
+    def ci_t(self, var, alpha=.95):
+        x = self[var]
+        ci = st.t.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha,
+                           df=len(x)-1)
+        return ci
+        
+    def ci_norm(self, var, alpha=.95):
+        x = self[var]
+        ci = st.norm.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha)
+        return ci
 
     def corr_pairwise(self, vars, long_format=True, lower_tri=False):
         assert isinstance(vars, list), "'vars' need to be a list"
