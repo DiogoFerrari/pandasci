@@ -17,6 +17,7 @@ from statsmodels.stats.proportion import proportions_ztest as prop_ztest
 from statsmodels.stats.proportion import proportions_chisquare as prop_chisqtest
 from statsmodels.stats.proportion import proportion_confint as ci
 #
+import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.widgets import TextBox
 import matplotlib.patheffects as pe
