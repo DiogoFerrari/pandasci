@@ -16,6 +16,10 @@ from statsmodels.stats.proportion import proportion_effectsize as prop_esize
 from statsmodels.stats.proportion import proportions_ztest as prop_ztest
 from statsmodels.stats.proportion import proportions_chisquare as prop_chisqtest
 from statsmodels.stats.proportion import proportion_confint as ci
+#
+from matplotlib.widgets import Slider
+from matplotlib.widgets import TextBox
+import matplotlib.patheffects as pe
 
 # {{{ spss                  }}}
 
@@ -333,6 +337,10 @@ class eDataFrame(pd.DataFrame):
             res.columns= [re.sub(pattern="^stat_|", repl="", string=s) for s in res.columns]
             res.columns= [re.sub(pattern="variable__$", repl="variable", string=s) for s in res.columns]
             res.columns= [re.sub(pattern="_variable_", repl="_", string=s) for s in res.columns]
+            # 
+        col_names = ['variable_'+fun for fun in funs]
+        for col_name, fun in zip(col_names, funs):
+            res.rename(columns={col_name:fun}, inplace=True)
         return res
 
 
@@ -545,9 +553,132 @@ class eDataFrame(pd.DataFrame):
         res = self
         if round:
             res = res.round(round)
-        s = res.to_csv(sep=' | ', index=False).replace('\n', ' | \n | ')
-        s = re.sub(pattern="^", repl=" | ", string=s)
+        s = res.to_csv(sep='|', index=False).replace('\n', ' | \n | ')
+        s = re.sub(pattern="^", repl="|", string=s)
         s = re.sub(pattern=".$", repl="", string=s)
         print(s)
-# }}}
 
+    
+    def flatten_columns(self, sep='_'):
+        'Flatten a hierarchical index'
+        assert isinstance(self.columns, pd.MultiIndex), "Not a multiIndex"
+        self = (self.reset_index(drop=False))
+        def _remove_empty(column_name):
+            return tuple(element for element in column_name if element)
+        def _join(column_name):
+            return sep.join(column_name)
+        new_columns = [_join(_remove_empty(column)) for column in
+                       self.columns.values]
+        self.columns = new_columns
+        return self
+
+# }}}
+# {{{ Extended Slider }}}
+
+
+class eSlider(Slider):
+    def __init__(self, left, bottom, width, height,
+                 lower, upper, init, *args, **kwargs):
+        # use the __init__ method from Slider to ensure
+        # that we're inheriting the correct behavior
+        self.axes_marker = plt.axes([left, bottom, width, height])
+        super(eSlider, self).__init__(
+            ax=self.axes_marker,
+            valmin=lower, valmax=upper,
+            valinit=init,
+            visible=False, *args, **kwargs)
+        self.slider()
+
+    # this method is makes it so our method eSlider return an instance
+    # of eSlider, instead of a regular Slider
+    @property
+    def _constructor(self):
+        return eSlider
+
+    def on_update(self, func):
+        self.func = func
+        def func_extension(func):
+            self.func()
+            self.update_slider_marker()
+        self.on_changed(func_extension)
+        
+
+    def slider(self, markercolor='white', markeredgecolor='black',
+               markersize=100, markerlinewidth=.3, 
+               barcolor='lightgrey', barstyle='-',barwidth=4,
+               **kwds):
+        # pos, .5, color, edgecolor, s, linewidth, zorder (marker)
+        # facecolor='white', edgecolor='red', hatch=None, (rectable)
+        # 
+        self.vline.set_xdata(-np.Inf) # to remove the initial marker of valinit
+        self.vline.set_xdata(-10000) # to remove the initial marker of valinit
+        self.ax.spines['bottom'].set_visible(False)
+        self.ax.spines['left'].set_visible(False)
+        self.ax.spines['right'].set_visible(False)
+        self.ax.spines['top'].set_visible(False)
+        self.ax.spines['bottom'].set_linewidth(3)
+        self.ax.tick_params(top=None, bottom=None, left=None, right=None, 
+                            labeltop=None, labelbottom=None, labelleft=None, labelright=None,
+                            which='major', direction='out', color='black', pad=3,
+                            # grid_color='lightgrey', grid_linestyle='--', grid_linewidth=.5,
+                            # labelsize=10, labelcolor='black'
+                            )
+        # bar
+        # self.ax.plot([.01, .98], [.5, .5],
+        self.ax.axhline(.5, xmin=0.01, xmax=.99,
+                     color=barcolor,
+                     linestyle=barstyle,
+                     path_effects=[pe.Stroke(linewidth=4,
+                                             foreground='black'),
+                                      pe.Normal()],
+                     # transform=plt.gca().transAxes,
+                     linewidth=barwidth, solid_capstyle='round')
+        
+        # marker
+        self.slider_marker(pos=self.val, y=.5, color=markercolor,
+                           edgecolor=markeredgecolor,
+                           s=markersize, linewidth=markerlinewidth)
+    
+    def slider_marker(self, pos, y, color='white', edgecolor='black', s=100, linewidth=.3):
+        self.marker = self.ax.scatter(pos, y, color=color, edgecolor=edgecolor,
+                                      s=s, linewidth=linewidth, zorder=100, marker='o') 
+    # 
+    def update_slider_marker(self):
+        self.marker.remove()
+        self.marker = slider_marker(self, pos=self.val, y=.5)
+    
+
+    
+
+# }}}
+# {{{ Extended TextBox }}}
+
+class eTextBox(TextBox):
+    def __init__(self, left, bottom, width, height, hovercolor="whitesmoke",
+                 *args, **kwargs):
+        # use the __init__ method from TextBox to ensure
+        # that we're inheriting the correct behavior
+        self.axes_box = plt.axes([left, bottom, width, height])
+        super(eTextBox, self).__init__(ax=self.axes_box, hovercolor=hovercolor,
+                                       *args, **kwargs)
+        self.box()
+
+    # this method is makes it so our method eTextBox return an instance
+    # of eTextBox, instead of a regular TextBox
+    @property
+    def _constructor(self):
+        return eTextBox
+
+    def box(self, bottom=True, left=False,
+            right=False, top=False, linestyle="-",
+            linewidth=1):
+        self.ax.spines['bottom'].set_visible(bottom)
+        self.ax.spines['left'].set_visible(left)
+        self.ax.spines['right'].set_visible(right)
+        self.ax.spines['top'].set_visible(top)
+        self.ax.spines['bottom'].set_linestyle(linestyle)
+        self.ax.spines['bottom'].set_linewidth(linewidth)
+
+
+
+# }}}
