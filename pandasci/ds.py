@@ -636,9 +636,9 @@ class eSlider(Slider):
                      linewidth=barwidth, solid_capstyle='round')
         
         # marker
-        self.marker = self.slider_marker(pos=self.val, y=.5, color=markercolor,
-                                         edgecolor=markeredgecolor,
-                                         s=markersize, linewidth=markerlinewidth)
+        self.slider_marker(pos=self.val, y=.5, color=markercolor,
+                           edgecolor=markeredgecolor,
+                           s=markersize, linewidth=markerlinewidth)
     
     def slider_marker(self, pos, y, color='white', edgecolor='black', s=100, linewidth=.3):
         self.marker = self.ax.scatter(pos, y, color=color, edgecolor=edgecolor,
@@ -646,7 +646,7 @@ class eSlider(Slider):
     # 
     def update_slider_marker(self):
         self.marker.remove()
-        self.marker = slider_marker(self, pos=self.val, y=.5)
+        slider_marker(self, pos=self.val, y=.5)
     
 
     
