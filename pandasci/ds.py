@@ -604,6 +604,12 @@ class eSlider(Slider):
         self.on_changed(func_extension)
         
 
+    def slider_marker(self, pos, y, color='white', edgecolor='black', s=100,
+                      linewidth=.3):
+        self.marker = self.ax.scatter(pos, y, color=color, edgecolor=edgecolor,
+                                      s=s, linewidth=linewidth, zorder=100,
+                                      marker='o') 
+
     def slider(self, markercolor='white', markeredgecolor='black',
                markersize=100, markerlinewidth=.3, 
                barcolor='lightgrey', barstyle='-',barwidth=4,
@@ -619,9 +625,11 @@ class eSlider(Slider):
         self.ax.spines['top'].set_visible(False)
         self.ax.spines['bottom'].set_linewidth(3)
         self.ax.tick_params(top=None, bottom=None, left=None, right=None, 
-                            labeltop=None, labelbottom=None, labelleft=None, labelright=None,
+                            labeltop=None, labelbottom=None, labelleft=None,
+                            labelright=None,
                             which='major', direction='out', color='black', pad=3,
-                            # grid_color='lightgrey', grid_linestyle='--', grid_linewidth=.5,
+                            # grid_color='lightgrey', grid_linestyle='--',
+                            # grid_linewidth=.5,
                             # labelsize=10, labelcolor='black'
                             )
         # bar
@@ -640,13 +648,10 @@ class eSlider(Slider):
                            edgecolor=markeredgecolor,
                            s=markersize, linewidth=markerlinewidth)
     
-    def slider_marker(self, pos, y, color='white', edgecolor='black', s=100, linewidth=.3):
-        self.marker = self.ax.scatter(pos, y, color=color, edgecolor=edgecolor,
-                                      s=s, linewidth=linewidth, zorder=100, marker='o') 
     # 
     def update_slider_marker(self):
         self.marker.remove()
-        slider_marker(self, pos=self.val, y=.5)
+        self.slider_marker(pos=self.val, y=.5)
     
 
     
