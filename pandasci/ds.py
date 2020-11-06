@@ -62,6 +62,9 @@ class spss_data():
                                      get_output=True)
         return vars_found
 
+    def list_vars(self, show_value_labels=False):
+        self.get_var()
+
 
     def get_values(self, key, print_values=True):
         # if isinstance(key, str):
