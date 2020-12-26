@@ -26,6 +26,7 @@ import matplotlib.patheffects as pe
 import textwrap 
 from numpy import pi as pi
 import xlrd
+import matplotlib.ticker as mticker # to avoid warning about tick location
 
 # {{{ spss                  }}}
 
@@ -908,18 +909,6 @@ class eDataFrame(pd.DataFrame):
     # =====================================================
     # Plots
     # =====================================================
-    def __create_figure__(self, **kws):
-        nrows = kws.get("nrows", 1)
-        ncols = kws.get("ncols", 1)
-        figsize=kws.get('figsize', [10, 6])
-        tight_layout=kws.get("tight_layout", True)
-        polar=kws.get("polar", False)
-        fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize,
-                               tight_layout=tight_layout,
-                               subplot_kw=dict(polar=polar))
-        return fig, ax
-
-
     # =====================================================
     # Scatter plot
     # =====================================================
@@ -1036,9 +1025,9 @@ class eDataFrame(pd.DataFrame):
             ax.set_titles(facet_titles, loc=facet_title_loc,
                           size=facet_fontsize)
 
-
-        self.__plot_grid__(it.chain(*ax.axes))
-        self.__plot_border__(it.chain(*ax.axes))
+        for axc in it.chain(*ax.axes):
+            self.__plot_grid__(ax=axc)
+            self.__plot_border__(ax=axc)
 
 
 
@@ -1097,8 +1086,16 @@ class eDataFrame(pd.DataFrame):
              - facet
                - ycoord              :kws.get('facet_title_ypos', 1.05)
                - facet_title_size    :kws.get('facet_title_size', 15)
-                       
-        Output
+             - Shaded regions
+               - shade_colors  : a list of colors 
+               - shade_alpha   : a list of alpha values
+               - shade_ymin    : float, the min value for the shaded area
+               - shade_ymax    : float, the max value for the shaded area
+               - grid_which    : string, which grid to draw (minor, major, both)
+               - grid_axis     : string, axis to draw (x, y, both)
+               - grid_linetype : grid linetype
+               - grid_alpha    : float between 0 and 1, grid line transparency
+              Output
            A polar plot. It return the an axis object, or a list of axes if
            facets are used
         '''
@@ -1132,24 +1129,20 @@ class eDataFrame(pd.DataFrame):
             else:
                 ax=list(it.chain(*ax))
             self.__plot_polar_facets__(tab, group, func, ax, facet, **kws)
-        if facet:
-            for axc in ax:
-                self.__plot_polar_add_thresholds__(axc, **kws)
-                self.__plot_polar_addlabels__(axc, tab=tab, vars=vars,
-                                              radian_pos=radian_pos, **kws)
-                if 'variable_group' in tab.columns:
-                    self.__plot_polar_vars_group__(ax=axc, tab=tab,
-                                                   func=func, **kws)
-            if legend_show:
-                self.__plot_polar_add_legend__(ax[0], **kws)
-        else:    
-            self.__plot_polar_add_thresholds__(ax, **kws)
-            self.__plot_polar_addlabels__(ax, tab=tab, vars=vars,
+        # Plot aesthetic elements (grid, labels, legend, etc)
+        if not facet:
+            ax = [ax]
+        for axc in ax:
+            self.__plot_polar_add_thresholds__(axc, **kws)
+            self.__plot_polar_addlabels__(axc, tab=tab, vars=vars,
                                           radian_pos=radian_pos, **kws)
             if 'variable_group' in tab.columns:
-                self.__plot_polar_vars_group__(ax=ax, tab=tab, func=func, **kws)
-            if legend_show:
-                self.__plot_polar_add_legend__(ax, **kws)
+                self.__plot_polar_vars_group__(ax=axc, tab=tab,
+                                               func=func, **kws)
+            self.__plot_grid__(ax=axc, **kws)
+            self.__plot_yticks__(ax=axc, **kws)
+        if legend_show:
+            self.__plot_polar_add_legend__(ax[0], **kws)
         return ax
         
 
@@ -1213,6 +1206,9 @@ class eDataFrame(pd.DataFrame):
             labels=["\n".join(textwrap.wrap(label, labels_wrap)) 
                     for label in labels]
         vars  = kws.get('vars')
+        # this line is to avoid warning about tick location
+        ax.xaxis.set_major_locator(mticker.FixedLocator(radian_pos))
+        # ----
         ax.set_xticklabels(labels=labels, color='black', fontsize=labels_size)
         ax.set_xticks(ticks=radian_pos, minor=[])
         ax.tick_params(axis='x', pad=labels_dist)
@@ -1253,6 +1249,7 @@ class eDataFrame(pd.DataFrame):
         ls=kws.get('linestyle', '-')
         linesize=kws.get('linesize', 1)
         alpha=kws.get('alpha', 1)
+        ylim=kws.get('ylim', None)
         x, y = list(tab['pos']), list(tab[func])
         x.append(x[0]); y.append(y[0])# to close the circle
         ax.plot(x, y, color=color,
@@ -1260,6 +1257,8 @@ class eDataFrame(pd.DataFrame):
                 linestyle=ls, alpha=alpha,
                 label=label
                 )
+        if ylim is not None:
+            ax.set_ylim(ylim[0], ylim[1])
         return ax
 
 
@@ -1350,12 +1349,6 @@ class eDataFrame(pd.DataFrame):
     ## ------------------------
     ## Plot ancillary functions
     ## ------------------------ 
-    def __plot_grid__(self, axs):
-        for axc in axs:
-            # grid
-            axc.grid(b=None, which='major', axis='y', linestyle='-', alpha=.3)
-            axc.set_axisbelow(True) # to put the grid below the plot
-        
     def __plot_border__(self, axs):
         for axc in axs:
             axc.spines['bottom'].set_visible(True)
@@ -1363,11 +1356,44 @@ class eDataFrame(pd.DataFrame):
             axc.spines['right'].set_visible(False)
             axc.spines['top'].set_visible(False)
         
+    def __create_figure__(self, **kws):
+        nrows = kws.get("nrows", 1)
+        ncols = kws.get("ncols", 1)
+        figsize=kws.get('figsize', [10, 6])
+        tight_layout=kws.get("tight_layout", True)
+        polar=kws.get("polar", False)
+        fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize,
+                               tight_layout=tight_layout,
+                               subplot_kw=dict(polar=polar))
+        return fig, ax
+
+    def __plot_yticks__(self, ax, **kws):
+        ytick_size = kws.get("ytick_size", None)
+        ax.tick_params(axis="y",
+                       labelsize= ytick_size
+                       # top=None, bottom=True, left=True, right=None, 
+                       # labeltop=None, labelbottom=True,
+                       # labelleft=True, labelright=None,
+                       # which='major', direction='out', color='black', pad=3,
+                       # grid_color='lightgrey', grid_linestyle='--',
+                       # grid_linewidth=.5,
+                       # labelcolor='black'
+                        )
+        
+
+    def __plot_grid__(self, ax, **kws):
+        grid_which=kws.get("grid_which", 'major')
+        grid_axis = kws.get("grid_axis", 'both')
+        grid_linetype = kws.get("grid_linetype", '-')
+        grid_alpha = kws.get("grid_alpha", .4)
+        ax.grid(b=None, which=grid_which, axis=grid_axis,
+                linestyle=grid_linetype, alpha=grid_alpha)
+        ax.set_axisbelow(True) # to put the grid below the plot
+
 
 
 # }}}
 # {{{ Extended Slider }}}
-
 
 class eSlider(Slider):
     def __init__(self, left, bottom, width, height,
@@ -1444,9 +1470,6 @@ class eSlider(Slider):
     def update_slider_marker(self):
         self.marker.remove()
         self.slider_marker(pos=self.val, y=.5)
-    
-
-    
 
 # }}}
 # {{{ Extended TextBox }}}
