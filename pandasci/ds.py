@@ -23,6 +23,8 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.widgets import TextBox
 import matplotlib.patheffects as pe
+import textwrap 
+from numpy import pi as pi
 import xlrd
 
 # {{{ spss                  }}}
@@ -467,7 +469,6 @@ class read_spss():
             if isinstance(varname, bytes) and not isinstance(varname, str):
                 vars[i] = varname.decode('utf-8')
         return vars
-
 
 # }}}
 # {{{ Extended DataFrame    }}}
@@ -1127,9 +1128,9 @@ class eDataFrame(pd.DataFrame):
             fig, ax = self.__create_figure__(nrows=nrows, ncols=ncols,
                                              polar=True, **kws)
             if ncols==1 or nrows==1:
-                ax=list(itertools.chain(ax))
+                ax=list(it.chain(ax))
             else:
-                ax=list(itertools.chain(*ax))
+                ax=list(it.chain(*ax))
             self.__plot_polar_facets__(tab, group, func, ax, facet, **kws)
         if facet:
             for axc in ax:
@@ -1183,9 +1184,9 @@ class eDataFrame(pd.DataFrame):
         if thresholds is not False:
             assert isinstance(thresholds, list), "'thresholds' must be a list!"
             for trh,trhc,trhs,trhl in zip(thresholds,
-                                          itertools.cycle(thresholds_color),
-                                          itertools.cycle(thresholds_size),
-                                          itertools.cycle(thresholds_linetype)):
+                                          it.cycle(thresholds_color),
+                                          it.cycle(thresholds_size),
+                                          it.cycle(thresholds_linetype)):
                 ax.plot(rads,[trh]*len(rads),
                         color=trhc,
                         linestyle=trhl,
@@ -1240,7 +1241,7 @@ class eDataFrame(pd.DataFrame):
     def __plot_polar_groups__(self, tab, group, func, ax, **kws):
         linestyles=kws.get('group_linestyles', '-')
         groups=np.sort(tab[group].unique())
-        for gr, ls in zip(groups, itertools.cycle(linestyles)):
+        for gr, ls in zip(groups, it.cycle(linestyles)):
             kws['linestyle']=ls
             tabt=tab.query(f"{group}=={gr}")
             self.__plot_polar_simple__(tabt, func, ax, label=gr, **kws)
@@ -1325,8 +1326,8 @@ class eDataFrame(pd.DataFrame):
         if not shade_alpha:
             shade_alpha = np.linspace(1, .3, len(groups))
         for group, color, alpha in zip(groups,
-                                       itertools.cycle(shade_colors),
-                                       itertools.cycle(shade_alpha)
+                                       it.cycle(shade_colors),
+                                       it.cycle(shade_alpha)
                                        ):
             tabt = (tab
                     .filter(["variable_group",'pos', func])
