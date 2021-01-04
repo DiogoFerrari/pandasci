@@ -630,7 +630,6 @@ class eDataFrame(pd.DataFrame):
                 for cond_on in condition_on:
                     if cond_on not in vars:
                         vars.append(cond_on)
-        
 
         if not condition_on:
             def compute_stdev(df):
@@ -1343,8 +1342,127 @@ class eDataFrame(pd.DataFrame):
                             zorder=0,
                             label=group)
 
+    # =====================================================
+    # Histogram
+    # =====================================================
+    def plot_hist(self, var, group=None, facet=None, ax=None, **kws):
+        '''
+        Plot a histogram 
+        
+        Input:
+           vars  a list of variables in the DataFrame. 
+           group a string with the name of the variable in the DataFrame to 
+                 use as group of the lines in the plot
+           facet a string with the name of the variable in the DataFrame to
+                 use as facet
+           ax    a matplotlib subplot object to plot. If none, the function
+                 creates a fugure and the subplots
+           # kws:
+           #   - legend keywords:
+           #     - legend_title      : string
+           #     - legend_title_size : inteter
+           #     - legend_show       : boolean
+           #     - legend_frame      : boolean, to use a frame in the legend
+           #     - legend_items_size : size of the font of the items
+           #     - legend_ncol       : integer, number of columns in the legend
+           #   - facet
+           #     - ycoord              :kws.get('facet_title_ypos', 1.05)
+           #     - facet_title_size    :kws.get('facet_title_size', 15)
+           #    Output
+           # A histogram plot. It return the an axis object, or a list of axes if
+           # facets are used
+        '''
+        bin_labels=kws.get('bin_labels', True)
+        if not facet:
+            if not ax:
+                fig, ax = self.__create_figure__(nrow=1, ncol=1, **kws)
+            self.__plot_hist_main__(ax, var, **kws)
+        if bin_labels:
+            self.__plot_hist_bin_labels__(ax, **kws)
+        return ax
+            
+    def __plot_hist_bin_labels__(self, ax, **kws):
+        bin_labels_color=kws.get('bin_labels_color', 'black')
+        bin_labels_ha=kws.get('bin_labels_ha', 'center')
+        bin_labels_va=kws.get('bin_labels_va', 'bottom')
+        bin_labels_fontsize=kws.get('bin_labels_fontsize', None)
+        bin_labels_round=kws.get('bin_labels_round', 2)
+        zorder=kws.get('zorder', 0)
+        s=0
+        for p in ax.patches:
+            s+= p.get_height()
+        for p in ax.patches: 
+            label=f'{round(p.get_height()/s, bin_labels_round)}'
+            ax.text(p.get_x() + p.get_width()/2.,
+                    p.get_height(),
+                    label, 
+                    fontsize=bin_labels_fontsize,
+                    color=bin_labels_color,
+                    ha=bin_labels_ha,
+                    va=bin_labels_va,
+                    zorder=zorder
+                    )
 
+    def __plot_hist_main__(self, ax, var, **kws):
+        border_color=kws.get('border_color', 'white')
+        alpha=kws.get('alpha', .7)
+        linewidth=kws.get('linewidth', 2)
+        stat=kws.get('stat', 'probability')
+        zorder=kws.get('zorder', 0)
+        ylim = kws.get("ylim", None)
+        bins = kws.get("bins", 'auto')
+        # =kws.get('', '')
+        sns.histplot(self[var],
+                     alpha=alpha,
+                     bins=bins,
+                     edgecolor=border_color,
+                     linewidth=linewidth,
+                     zorder=zorder,
+                     stat=stat)
+        if ylim:
+            ax.set_ylim(ylim)
 
+    # =====================================================
+    # Plot table
+    # =====================================================
+    def plot_table(self, ax=None, **kws):
+        '''
+        Plot table
+        
+        Input
+           col_withs either a float or a list of floats between 0 and 1. If a 
+                     float, use the provided value to set the size of all 
+                     columns. If a list, set the value of the columns 
+                     based on the list
+        '''
+        row_labels=kws.get('row_labels', None)
+        col_widths = kws.get("col_widths", None)
+        row_scale = kws.get("row_scale", 1)
+        col_scale = kws.get("col_scale", 1)
+        va = kws.get("va", 'center')
+        ha = kws.get("ha", 'center')
+        loc = kws.get("loc", 'top')
+        borders = kws.get("borders", 'closed')
+        header_colors = kws.get('header_colors',
+                          plt.cm.BuPu(np.full(len(self.columns), 0.1)))
+        fontsize = kws.get("fontsize", 10)
+        if isinstance(col_widths, float):
+            col_widths = [col_widths]*len(tab.columns)
+        if not ax:
+            fig, ax = self.__create_figure__(nrow=1, ncol=1, **kws)
+        gtab=ax.table(cellText=self.values,
+                      rowLabels=row_labels,
+                      colWidths = col_widths ,
+                      colLabels=self.columns,
+                      cellLoc = ha,
+                      rowLoc = va,
+                      colColours=header_colors,
+                      edges=borders,
+                      loc=loc,
+                      )
+        gtab.scale( col_scale, row_scale)
+        gtab.set_fontsize(fontsize)
+        return ax
 
     ## ------------------------
     ## Plot ancillary functions
