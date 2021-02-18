@@ -27,7 +27,75 @@ import textwrap
 from numpy import pi as pi
 import xlrd
 import matplotlib.ticker as mticker # to avoid warning about tick location
+import warnings
 
+# {{{ functions }}}
+
+
+def __missing__(x):
+    res = x.isna().sum()
+    return res
+
+def read_data(**kwargs):
+    fn=kwargs.get('fn')
+    assert fn, "fn (filepath) must be provided."
+    fn_type=os.path.splitext(fn)[1]
+    # 
+    if fn_type=='.csv' or fn_type=='.CSV':
+        return read_csv(**kwargs)
+    # 
+    elif fn_type=='.dta' or fn_type=='.DTA':
+        return read_dta(**kwargs)
+    # 
+    elif fn_type=='.sav':
+        # return spss_data(**kwargs)
+        return read_spss(**kwargs)
+    # 
+    elif (fn_type=='.xls' or fn_type=='.xlsx' or
+          fn_type=='.XLS' or fn_type=='.XLSX'):
+        return read_xls(**kwargs)
+    # 
+    else:
+        print(f"No reader for file type {fn_type}")
+        return None
+        
+
+def read_csv(**kwargs):
+    df = pd.read_csv(filepath_or_buffer=kwargs.get('fn'),
+                     sep=kwargs.get('sep', ';'),
+                     index_col=kwargs.get('index_col'),
+                     decimal=kwargs.get('decimal', '.'),
+                     encoding=kwargs.get('encoding', 'utf-8')
+                     )
+    return eDataFrame(df)
+        
+def read_dta(**kwargs):
+    fn=kwargs.get('fn')
+    return eDataFrame(pd.read_stata(fn))
+
+def read_xls(**kwargs):
+    fn=kwargs.get('fn'); kwargs.pop('fn')
+    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
+    # 
+    print(f"\nFunction arguments:\n")
+    print(inspect.signature(pd.read_excel))
+    print(f"\nFor details, run help(pd.read_excel)\n")
+    print(f"Data set loaded!")
+    # 
+    return df
+    
+    
+def reorderLegend(ax=None,order=None,unique=False):
+    if ax is None: ax=plt.gca()
+    handles, labels = ax.get_legend_handles_labels()
+    labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0])) # sort both labels and handles by labels
+    if order is not None: # Sort according to a given list (not necessarily complete)
+        keys=dict(zip(order,range(len(order))))
+        labels, handles = zip(*sorted(zip(labels, handles), key=lambda t,keys=keys: keys.get(t[0],np.inf)))
+    if unique:  labels, handles= zip(*unique_everseen(zip(labels,handles), key = labels)) # Keep only the first of each handle
+    return(handles, labels)
+
+# }}}
 # {{{ spss                  }}}
 
 # will be deprecated soon due to methods naming (old class)
@@ -129,7 +197,7 @@ class spss_data():
 
         Input:
            vars          a list with the id of the variables to be retrieved 
-                         from the .sav file
+                         from the .sav file. If 'all', retrieve all variables
            use_labels    bool, if True return the SPSS labels of the variables
            rec           dictionary with the variables and values to be recoded.
                          Format {<varname>: <value1>:<new value>, 
@@ -141,7 +209,9 @@ class spss_data():
             A Data Frame with the variables selected in 'vars'
 
         '''
-
+        print(vars)
+        if vars == 'all':
+            vars = list(self.get_var('').keys())
         assert isinstance(vars, list) or vars is None,\
         f"Variable 'vars' must be a list or 'None'"
         assert isinstance(vars_newnames, list) or vars_newnames is None,\
@@ -249,8 +319,12 @@ class read_spss():
         with spss.SavHeaderReader(fn, ioUtf8=True) as header:
             self.__metadata = header.all()
 
+    def var_list(self, encoding="utf-8"):
+        self.var_search('.', encoding=encoding)
+        
 
-    def var_search(self, regexp='', show_value_labels=False, get_output=False):
+    def var_search(self, regexp='', show_value_labels=False, get_output=False,
+                   encoding="utf-8"):
         '''
         Search for variables using regular expression
 
@@ -269,9 +343,12 @@ class read_spss():
         vars_found = {}
         for key, label in self.__metadata.varLabels.items():
             if isinstance(label, bytes):
-                label = label.decode("utf-8")
+                try:
+                    label = label.decode(encoding)
+                except (OSError, IOError) as e:
+                    print(f"Encoding does not work! Try another one!")
             if isinstance(key, bytes):
-                key = key.decode("utf-8")
+                key = key.decode(encoding)
             if bool(re.search(pattern=regexp, string=label)):
                 vars_found[key] = label
         self.__print_vars_found__(vars_found, show_value_labels)
@@ -380,7 +457,6 @@ class read_spss():
             A Data Frame with the variables selected in 'varnames'
 
         '''
-
         assert isinstance(varnames, list) or varnames is None,\
         f"Variable 'varnames' must be a list or 'None'"
         assert isinstance(varsnames_new, list) or varsnames_new is None,\
@@ -479,6 +555,8 @@ class eDataFrame(pd.DataFrame):
         # use the __init__ method from DataFrame to ensure
         # that we're inheriting the correct behavior
         super(eDataFrame, self).__init__(*args, **kwargs)
+        self.ncol = self.shape[1]
+        self.nrow = self.shape[0]
 
     # this method is makes it so our methoeDataFrame return an instance
     # of eDataFrame, instead of a regular DataFrame
@@ -513,6 +591,7 @@ class eDataFrame(pd.DataFrame):
                        inplace=True)
         return eDataFrame(res)
 
+
     def pivot_longer(self, id_vars, value_vars=None,
                      var_name=None, value_name='value', ignore_index=True):
         res = pd.melt(self, id_vars=id_vars, value_vars=value_vars,
@@ -520,26 +599,286 @@ class eDataFrame(pd.DataFrame):
                        ignore_index=ignore_index)
         return eDataFrame(res)
         
+
     def pivot_wider(self, id_vars=None, cols_from=None, values_from=None,
-                    aggfunc='sum'):
+                    aggfunc='sum', sep="_"):
         res = (self
                .pivot_table(values=values_from, index=id_vars,
                             columns=cols_from, aggfunc=aggfunc)
                .reset_index(drop=False)
                )
+        try:
+            res = res.flatten_columns()
+        except (OSError, IOError, AssertionError) as e:
+            pass
+        if isinstance(values_from, list) and len(values_from)==1:
+            res.columns = [re.sub(pattern=values_from[0]+sep, repl='', string=s)
+                           for s in res.columns]
         res.columns.name=''
         return eDataFrame(res)
+
+
+    def combine(self, cols, colname=None, sep='_', remove=False):
+        '''
+        Combine columns
+        
+        Input
+           cols list with the name of the columns to join
+           colmane string with the name of the new colum
+           sep string to put between columns merged
+           remove boolean, if True will remove the columns merged
+        
+        Output
+           Extended data frame with columns merged
+        '''
+        if not colname:
+            colname = f"{sep}".join(cols)
+        res = (self
+               [cols]
+               .fillna("")
+               .astype(str)
+               .agg(f"{sep}".join, axis=1)
+               )
+        res = eDataFrame(res, columns=[colname])
+        res = pd.concat([self, res], axis=1)
+        if remove:
+            res.drop(cols, axis=1, inplace=True)
+        res = res.loc[:, ~res.columns.duplicated(keep='last')]
+        return res
+        
+
+    def mutate(self, dict):
+        res = self
+        for k, v in dict.items():
+            res = res.assign(**{k: v})
+            res = res.loc[:, ~res.columns.duplicated(keep='last')]
+        return res
+        
+
+    def bind_row(self, df):
+        res =  pd.concat([self, df], axis=0, ignore_index=True)
+        return eDataFrame(res)
+
+
+    def bind_col(self, df, ignore_index=False):
+        res =  pd.concat([self, df], axis=1, ignore_index=ignore_index)
+        return eDataFrame(res)
+        
+
+    def separate(self, col, into, regexp, keep=False):
+        res = self[col].str.extract(regexp)
+        if isinstance(into, str):
+            into = list(into)
+        res.columns = into
+        res = self.bind_col(res, ignore_index=False)
+        if not keep:
+            res = res.drop([col], axis=1)
+        return res
+
+
+    def join(self, data, how='left', on=None, left_on=None, right_on=None,
+              conflict='keep_all', suffixes=['_x', "_y"], indicator=False):
+        '''
+        Merge data frames
+
+        Input
+           data the data frame to merge
+           how (see pd.merge)
+           on (see pd.merge)
+           on_left (see pd.merge)
+           on_right (see pd.merge)
+           sufixes (see pd.merge)
+           indicator (see pd.merge)
+           conflict either 'keep_all', 'keep_x', or 'keep_y'. It defines the
+                    bahavior in case of conlfict between columns data frames
+                    being merged
+                    
+        '''
+        res = self.merge(data, how=how, on=on ,
+                         left_on=left_on, right_on=right_on,
+                         suffixes=suffixes, indicator=indicator)
+        if conflict=="keep_x":
+            res = self.__join_keep__(res, data,
+                                     keep_suffix=suffixes[0],
+                                     discard_suffix=suffixes[1])
+        if conflict=="keep_y":
+            res = self.__join_keep__(res, data,
+                                     keep_suffix=suffixes[1],
+                                     discard_suffix=suffixes[0])
+        return eDataFrame(res)
+
+
+    def __join_keep__(self, res, data, keep_suffix, discard_suffix):
+        cols = list(data.columns)
+        keep = [col+keep_suffix for col in cols]
+        discard = [col+discard_suffix for col in cols]
+        # 
+        cols_res = list(res.columns)
+        cols_res_merged = [col_res for col_res in cols_res if
+                           col_res in keep or col_res in discard]
+        # check if columns are unique
+        if len(cols_res)!=len(set(cols_res)):
+            warnings.warn("Columns merged are not not unique! All were kept",
+                          UserWarning)
+        else:
+            for disc in discard:
+                if disc in cols_res_merged:
+                    res.drop([disc], axis=1, inplace=True)
+            for k in keep:
+                if k in cols_res_merged:
+                    col=re.sub(pattern=keep_suffix, repl="", string=k)
+                    res.rename(columns={k:col}, inplace=True)
+        return res
+        
+    
+    def exchange(self, data, var, match_on=None,
+                 match_on_left=None, match_on_right=None):
+        '''
+        Exchange values of one data frame from values of another using
+        a matching columns with unieuq values
+        
+        Input
+           data a data frame with values to collect 
+           var string with the name of the variable whose values will
+               be exchnanged
+        match_on a list with the variables to match in both data frames
+        match_on_left  a list with the variables on left data frame to match
+        match_on_right  a list with the variables on right data frame to match
+        '''
+        assert isinstance(var, str), "'var' must be a string!"
+        assert var in self.columns and var in data.columns, ("'var' must "+
+                                                             "be in both "+
+                                                             "data frames")
+        # assert isinstance(match_on_left, list), "'match_on' must be a list!"
+        # assert isinstance(match_on, list), "'match_on' must be a list!"
+        vars = [var]
+        if match_on:
+            assert isinstance(match_on, list), "'match_on' must be a list!"
+            assert len(self[match_on].drop_duplicates())==self[match_on].nrow,(
+                "The matching variable 'match_on' must contain unique values!"
+            )
+            vars = vars + match_on
+        if match_on_left:
+            assert isinstance(match_on_left, list), "'match_on_left' must be a list!"
+            assert len(self[match_on_left].unique())==self[match_on_left].nrow,(
+                "The matching variable 'match_on_left' must contain unique values!"
+            )
+        if match_on_right:
+            assert isinstance(match_on_right, list), "'match_on_right' must be a list!"
+            assert len(self[match_on_right].unique())==self[match_on_right].nrow,(
+                "The matching variable 'match_on_right' must contain unique values!"
+            )
+            vars = vars + match_on_right
+        #
+        # 
+        try:
+            var_order = '___XXorder_originalXX___'
+            self[var_order]=list(range(self.nrow))
+            res=(self
+                 .join(data[vars], how='inner', on=match_on ,
+                       left_on=match_on_left, right_on=match_on_right,
+                       conflict="keep_y", suffixes=["_x", "_y"])
+                 )
+            anti_match=(self
+                        .join(data[vars], how='outer', on=match_on ,
+                              left_on=match_on_left, right_on=match_on_right,
+                              conflict="keep_x", suffixes=["_x", "_y"],
+                              indicator=True)
+                        .query(f"_merge=='left_only'")
+                        .drop(['_merge'], axis=1)
+                        )
+            res = (res
+                   .bind_row(anti_match)
+                   .sort_values([var_order], ascending=True)
+                   .drop([var_order], axis=1)
+                   .reset_index(drop=True)
+                   )
+        except Exception as e:
+            res = self
+        return eDataFrame(res)
+
+
+    def cut(self, var, ncuts=10, labels=None, varname=None,
+            robust=False):
+        '''
+        Cut a numerical variable into categories
+
+        Input
+           robust Boolean, if True, it computes the cut limits after
+                   excluding the outliers
+        '''
+        if not varname:
+            varname=f"{var}_cat"
+        res = self[[var]].drop_duplicates().dropna(axis=0)
+        if robust:
+            idx = res.get_outliers(var).index
+            res = res.loc[idx,:]
+        q = np.linspace(0, 1, ncuts+1)
+        res[varname] = pd.qcut(res[var], q, labels=labels)
+        res=self.merge(res, how='left', on=[var])
+        return res
+
+    def get_dummies(self, vars):
+        '''
+        Return dummy version of categorical variables
+
+        Input:
+           vars a list of variable names in the data frame to convert to dummies
+
+        Output:
+            a data frame with columns indicating the categories
+
+        '''
+        dfd = pd.get_dummies(self.filter(vars))
+        res = (self
+               .bind_col(dfd,  ignore_index=False)
+               )
+        return eDataFrame(res)
+
 
 
     # =====================================================
     # Statistics
     # =====================================================
+    def get_outliers(self, var):
+        Q1 = self[var].quantile(0.25)
+        Q3 = self[var].quantile(0.75)
+        IQR = Q3 - Q1
+        idx = (self[var] < (Q1 - 1.5 * IQR)) | (self[var] > (Q3 + 1.5 * IQR))
+        return self.loc[idx,:]
 
-    def summary(self, vars, funs, groups=None, wide_format=None):
-        if groups:
-            res = self.__summary_group__(vars, funs, groups, wide_format)
+
+    def summary(self, vars, funs={'N':'count', "Missing":__missing__,
+                                  'Mean':'mean','Std.Dev':'std', 
+                                  'Min':'min', "Max":'max'},
+                groups=None, wide_format=None):
+        assert isinstance(funs, list) or isinstance(funs, dict),\
+        ("'funs' must be a list or a dictionary of functions")
+        assert isinstance(vars, list), "'vars' must be a list of variable names"
+        # 
+        if isinstance(funs, dict):
+            funs_names = list(funs.values())
+            funs = {fun:fun_name for fun_name, fun in funs.items()}
+            funs_labels={}
         else:
-            res = self.__summary__(vars, funs)
+            funs_names = funs
+            funs = {fun:fun_name for fun_name, fun in zip(funs, funs)}
+        for fun_name, fun_label in funs.items():
+            if callable(fun_name):
+                funs_labels[fun_name.__name__] = fun_label
+            else:
+                funs_labels[fun_name] = fun_label
+        # 
+        if groups:
+            res = self.__summary_group__(vars, funs_names, groups, wide_format)
+        else:
+            res = self.__summary__(vars, funs_names)
+        # 
+        cols = list(res.columns)
+        cols = [col for col in cols if col not in funs_names]
+        res = res.filter(cols+funs_names)
+        # 
+        res.rename(columns=funs_labels, inplace=True)
         return eDataFrame(res)
 
 
@@ -555,6 +894,12 @@ class eDataFrame(pd.DataFrame):
 
 
     def __summary_group__(self, vars, funs, groups=None, wide_format=None):
+        funs_name=[]
+        for f in funs:
+            if hasattr(f, '__call__'):
+                funs_name.append(f.__name__)
+            else:
+                funs_name.append(f)
         res=(self
              .filter(vars+groups)
              .groupby(groups)
@@ -571,7 +916,7 @@ class eDataFrame(pd.DataFrame):
                 colnames_new.append((l[0]))
         res.columns = colnames_new
         #
-        regexp="".join([f"{v}|" for v in funs])
+        regexp="".join([f"{v}|" for v in funs_name])
         regexp=re.sub(pattern="\|$", repl="", string=regexp)
         regexp="("+regexp+")"
         # 
@@ -592,7 +937,7 @@ class eDataFrame(pd.DataFrame):
                .reset_index( drop=False))
         # wide format
         if wide_format:
-            values = [f"variable_{fun}" for fun in funs]
+            values = [f"variable_{fun}" for fun in funs_name]
             res = (res
                    .pivot_table(values=values, index='variable',
                                 columns=groups, aggfunc="sum")
@@ -605,11 +950,10 @@ class eDataFrame(pd.DataFrame):
             res.columns= [re.sub(pattern="variable__$", repl="variable", string=s) for s in res.columns]
             res.columns= [re.sub(pattern="_variable_", repl="_", string=s) for s in res.columns]
             # 
-        col_names = ['variable_'+fun for fun in funs]
-        for col_name, fun in zip(col_names, funs):
+        col_names = ['variable_'+fun for fun in funs_name]
+        for col_name, fun in zip(col_names, funs_name):
             res.rename(columns={col_name:fun}, inplace=True)
         return res
-
 
 
     def freq(self, vars, condition_on=None):
@@ -664,7 +1008,7 @@ class eDataFrame(pd.DataFrame):
                    .apply(compute_freq)
                    .groupby(condition_on)
                    .apply(compute_stdev)
-                   .sort_values(by=(condition_on+['freq']),  ascending=True)
+                   .sort_values(by=(condition_on+vars),  ascending=True)
             )
         return eDataFrame(res)
 
@@ -806,16 +1150,78 @@ class eDataFrame(pd.DataFrame):
                              'pvalue':[pvalue], 'test':[test]})
     
 
-    def names(self, print_long=False):
-        if print_long:
-            for col in list(self):
-                print(col)
+    def tab(self, vars_row, vars_col, groups=None,
+            margins=True,normalize='all',#row/columns
+             margins_name='Total', report_format=False):
+        # if groups:
+        #     groups = list(groups) if isinstance(groups, str) else groups
+        #     groups = self[groups].drop_duplicates()
+        #     print(groups)
+        resn = self.__tab__(vars_row, vars_col, normalize=False,
+                            margins=margins, margins_name=margins_name)
+        resp = self.__tab__(vars_row, vars_col, normalize=normalize,
+                            margins=margins, margins_name=margins_name)
+        colsn=resn.columns[1:]
+        colsp=resp.columns[1:]
+        res=pd.DataFrame()
+        res[resp.columns[0]]=resp.iloc[:,0]
+        if report_format:
+            for coln, colp in zip(colsn, colsp):
+                col = [f"{round(100*p, 2)} ({n})" for p,n
+                       in zip(resp[colp], resn[coln])]
+                res[coln]= col
         else:
-            print(print(list(self)))
+            for coln, colp in zip(colsn, colsp):
+                res[coln]=resn[coln]
+                res[str(colp)+"_freq"]=100*resp[colp]
+        return eDataFrame(res)
+
+
+    def tabn(self, vars_row, vars_col, normalize=False, margins=True,
+             margins_name='Total'):
+        res = self.__tab__(vars_row, vars_col, normalize=normalize,
+                           margins=margins, margins_name=margins_name)
+        return eDataFrame(res)
+
+
+    def tabp(self, vars_row, vars_col, normalize="all", margins=True,
+             margins_name='Total'):
+        res = self.__tab__(vars_row, vars_col, normalize=normalize,
+                           margins=margins, margins_name=margins_name)
+        return eDataFrame(res)
+
+
+    def __tab__(self, vars_row, vars_col, normalize='all', margins=True,
+                margins_name='Total'):
+        if normalize=='row':
+            normalize='index'
+        if normalize=='column' or normalize=='col':
+            normalize='columns'
+        res = pd.crosstab(index=[self[vars_row]],
+                          columns=[self[vars_col]],
+                          margins=margins, margins_name=margins_name,
+                          normalize=normalize)
+        res = res.reset_index(drop=False)
+        return res
 
     # =====================================================
     # Utilities
     # =====================================================
+    def names(self, regexp=None, print_long=False):
+        names = list(self)
+        if regexp:
+            names = [nm for nm in names if
+                     bool(re.search(pattern=regexp, string=nm))]
+        if print_long:
+            for col in names:
+                print(col)
+        else:
+            print(print(names))
+        if not names:
+            print("\nNo column name matches the regexp!\n")
+            
+
+
     def to_org(self, round=4):
         res = self
         if round:
@@ -829,10 +1235,11 @@ class eDataFrame(pd.DataFrame):
     def flatten_columns(self, sep='_'):
         'Flatten a hierarchical index'
         assert isinstance(self.columns, pd.MultiIndex), "Not a multiIndex"
-        self = (self.reset_index(drop=False))
+        self = (self.reset_index(drop=True))
         def _remove_empty(column_name):
             return tuple(element for element in column_name if element)
         def _join(column_name):
+            column_name = [str(col) for col in column_name]
             return sep.join(column_name)
         new_columns = [_join(_remove_empty(column)) for column in
                        self.columns.values]
@@ -913,6 +1320,7 @@ class eDataFrame(pd.DataFrame):
     # =====================================================
     def plot_scatter(self, x, y, **kwargs):
         self.plot_line(x, y, kind='scatter', pts_show=True, **kwargs)
+        plt.tight_layout()
         
     # =====================================================
     # Line Plot
@@ -931,11 +1339,20 @@ class eDataFrame(pd.DataFrame):
                   # -----
                   title=None,
                   subtitle=None,
+                  title_ycoord=1.1,
+                  title_xcoord=-.04,
+                  title_yoffset=.05,
+                  title_size=15,
+                  subtitle_size=10,
+                  title_alpha=.6,
+                  subtitle_alpha=.6,
                   # legend
-                  leg_pos='left',
+                  leg_pos='top',
                   leg_title=None,
-                  leg_fontsize=13,
-                  leg_xpos=0, leg_ypos=1,
+                  leg_fontsize=10,
+                  leg_xpos=None,
+                  leg_ypos=None,
+                  leg_ncol=3,
                   figsize=[10, 6], tight_layout=True,
                   **kwargs
                   ):
@@ -946,6 +1363,7 @@ class eDataFrame(pd.DataFrame):
         # markers
         pts_show = kwargs.get("pts_show", False)
         pts_style=kwargs.get('pts_style', False)
+        grid = kwargs.get('grid', True)
         if not linetype and colors and pts_show and pts_style:
             linetype=colors
             pts_show= pts_style
@@ -991,24 +1409,28 @@ class eDataFrame(pd.DataFrame):
         # Legend
         # ------
         if colors or linetype:
-            if leg_pos=='left':
-                leg = ax._legend
-                leg.set_bbox_to_anchor([1,.95])
-            else:
-                ax.legend.remove()
-                axc=ax.axes[0][0]
-                leg = axc.legend(loc='lower left', bbox_to_anchor=(leg_xpos,
-                                                                   leg_ypos),
-                                 handlelength=1.5,
-                                 title=leg_title,
-                                 handletextpad=.3, prop={'size':leg_fontsize},
-                                 # pad between the legend handle and text
-                                 labelspacing=.2, # vert sp between the leg ent.
-                                 columnspacing=1, # spacing between columns
-                                 ncol=3, mode=None, frameon=True, fancybox=True,
-                                 framealpha=0.5, facecolor='white')
-                leg._legend_box.align = "left"
-                ax.fig.tight_layout()
+            # if leg_pos=='left':
+            #     leg = ax._legend
+            #     leg.set_bbox_to_anchor([1,1])
+            # else:
+            if leg_pos=='top':
+                leg_pos='upper left'
+                if not leg_ypos:
+                    leg_ypos = 1.1
+                if not leg_xpos:
+                    leg_xpos = 0
+            ax.legend.remove()
+            axc=ax.axes[0][0]
+            leg = axc.legend(loc=leg_pos, bbox_to_anchor=(leg_xpos, leg_ypos),
+                             handlelength=1.5,
+                             title=leg_title,
+                             handletextpad=.3, prop={'size':leg_fontsize},
+                             # pad between the legend handle and text
+                             labelspacing=.2, # vert sp between the leg ent.
+                             columnspacing=1, # spacing between columns
+                             ncol=leg_ncol, mode=None, frameon=True, fancybox=True,
+                             framealpha=0.5, facecolor='white')
+            leg._legend_box.align = "left"
         
         # Facet titles
         # ------------
@@ -1023,10 +1445,24 @@ class eDataFrame(pd.DataFrame):
                 facet_titles="{row_name}"
             ax.set_titles(facet_titles, loc=facet_title_loc,
                           size=facet_fontsize)
+        elif title or subtitle:
+            axc=ax.axes[0][0]
+            xcoord=title_xcoord
+            ycoord=title_ycoord if subtitle else title_ycoord -.05
+            yoffset=title_yoffset if subtitle else 0
+            axc.annotate(title, xy=(xcoord, ycoord),
+                        xytext=(xcoord, ycoord),
+                        xycoords='axes fraction', size=title_size,
+                        alpha=title_alpha)
+            axc.annotate(subtitle, xy=(xcoord, ycoord-yoffset),
+                        xytext=(xcoord, ycoord-yoffset),
+                        xycoords='axes fraction', size=subtitle_size,
+                        alpha=subtitle_alpha)
 
         for axc in it.chain(*ax.axes):
-            self.__plot_grid__(ax=axc)
-            self.__plot_border__(ax=axc)
+            if grid:
+                self.__plot_grid__(ax=axc, **kwargs)
+            # self.__plot_border__(axs=axc)
 
 
 
@@ -1041,6 +1477,7 @@ class eDataFrame(pd.DataFrame):
         print(f"\nFor easy manipulation, this method returns two elements: \n"+\
               "1. The axis of the entire figure\n"+\
               "2. The axes for each facet in a list\n\n")
+        plt.tight_layout()
         return ax, it.chain(*ax.axes)
 
 
@@ -1057,7 +1494,9 @@ class eDataFrame(pd.DataFrame):
                  key is plotted together, a shaded area is added to the plot
                  based on the group, and the key is used as label for the group.
            group a string with the name of the variable in the DataFrame to 
-                 use as group of the lines in the plot
+                 use as group of the lines in the plot. Use 'group_linestyles'
+                 to define line styles for each group.
+                 Ex: group_linestyles=['-', '--']
            facet a string with the name of the variable in the DataFrame to
                  use as facet
            func a string with the function to compute the summary of the 
@@ -1238,7 +1677,8 @@ class eDataFrame(pd.DataFrame):
         groups=np.sort(tab[group].unique())
         for gr, ls in zip(groups, it.cycle(linestyles)):
             kws['linestyle']=ls
-            tabt=tab.query(f"{group}=={gr}")
+            tab[group] = tab[group].astype(str)
+            tabt=tab.query(f"{group}=='{gr}'")
             self.__plot_polar_simple__(tabt, func, ax, label=gr, **kws)
 
 
@@ -1467,7 +1907,7 @@ class eDataFrame(pd.DataFrame):
     ## ------------------------
     ## Plot ancillary functions
     ## ------------------------ 
-    def __plot_border__(self, axs):
+    def __plot_border__(self, axs, **kws):
         for axc in axs:
             axc.spines['bottom'].set_visible(True)
             axc.spines['left'].set_visible(False)
@@ -1507,8 +1947,6 @@ class eDataFrame(pd.DataFrame):
         ax.grid(b=None, which=grid_which, axis=grid_axis,
                 linestyle=grid_linetype, alpha=grid_alpha)
         ax.set_axisbelow(True) # to put the grid below the plot
-
-
 
 # }}}
 # {{{ Extended Slider }}}
@@ -1619,65 +2057,5 @@ class eTextBox(TextBox):
         self.ax.spines['bottom'].set_linewidth(linewidth)
 
 
-
-# }}}
-# {{{ functions }}}
-
-def read_data(**kwargs):
-    fn=kwargs.get('fn')
-    assert fn, "fn (filepath) must be provided."
-    fn_type=os.path.splitext(fn)[1]
-    # 
-    if fn_type=='.csv' or fn_type=='.CSV':
-        return read_csv(**kwargs)
-    # 
-    elif fn_type=='.dta' or fn_type=='.DTA':
-        return read_dta(**kwargs)
-    # 
-    elif fn_type=='.sav':
-        return spss_data(**kwargs)
-    # 
-    elif (fn_type=='.xls' or fn_type=='.xlsx' or
-          fn_type=='.XLS' or fn_type=='.XLSX'):
-        return read_xls(**kwargs)
-    # 
-    else:
-        print(f"No reader for file type {fn_type}")
-        return None
-        
-
-def read_csv(**kwargs):
-    df = pd.read_csv(filepath_or_buffer=kwargs.get('fn'),
-                     sep=kwargs.get('sep', ';'),
-                     index_col=kwargs.get('index_col'),
-                     decimal=kwargs.get('decimal', '.')
-                     )
-    return eDataFrame(df)
-        
-def read_dta(**kwargs):
-    fn=kwargs.get('fn')
-    return eDataFrame(pd.read_stata(fn))
-
-def read_xls(**kwargs):
-    fn=kwargs.get('fn'); kwargs.pop('fn')
-    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
-    # 
-    print(f"\nFunction arguments:\n")
-    print(inspect.signature(pd.read_excel))
-    print(f"\nFor details, run help(pd.read_excel)\n")
-    print(f"Data set loaded!")
-    # 
-    return df
-    
-    
-def reorderLegend(ax=None,order=None,unique=False):
-    if ax is None: ax=plt.gca()
-    handles, labels = ax.get_legend_handles_labels()
-    labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0])) # sort both labels and handles by labels
-    if order is not None: # Sort according to a given list (not necessarily complete)
-        keys=dict(zip(order,range(len(order))))
-        labels, handles = zip(*sorted(zip(labels, handles), key=lambda t,keys=keys: keys.get(t[0],np.inf)))
-    if unique:  labels, handles= zip(*unique_everseen(zip(labels,handles), key = labels)) # Keep only the first of each handle
-    return(handles, labels)
 
 # }}}

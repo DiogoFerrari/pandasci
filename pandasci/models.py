@@ -1,4 +1,7 @@
+from .ds import *
 import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
 import seaborn as sns
 import prince # for PCA
 from statsmodels.formula.api import glm as glm
@@ -22,6 +25,7 @@ class regression():
            formula     : string with formula
            formulas    : a dictionary with label of the models (key) and 
                          regression formulas (values)
+           family      : string, 'gaussian', 'binomial'
         '''
         depvar   = kws.get('depvar', False)
         indvars  = kws.get('indvars', False)
@@ -44,7 +48,7 @@ class regression():
                                                                    
 
         self.data=data
-        self.reg = self.__run_regresion__(*args, **kws)
+        self.reg = eDataFrame(self.__run_regresion__(*args, **kws))
     
 
     def __run_regresion__(self, *args, **kws):
@@ -61,14 +65,17 @@ class regression():
         if family=='gaussian':
             return self.__run_gaussian__(formulas, *args, **kws)
         if family=='binomial':
-            return self.__run_binomial__(formulas, *args, **kws)
+            return self.__run_binomial__(*args, **kws)
             
 
     def __run_gaussian__(self, *args, **kws):
         print("Gaussian regression not implemented yet")
 
 
-    def __run_binomial__(self, formulas, *args, **kws):
+    def __run_binomial__(self, *args, **kws):
+        formulas = kws.get('formulas', None)
+        if not formulas:
+            formulas = {'Model 1':kws.get('formula', None)}
         tab=pd.DataFrame()
         for label, formula in formulas.items():
             mod = glm(formula, data=self.data, family=family.Binomial())
@@ -80,11 +87,12 @@ class regression():
                                 "fit":[fit],
                                 "summ1":[self.__get_summary1__(fit)],
                                 "summ2":[self.__get_summary2__(fit)],
+                                "summ3":[self.__get_summary3__(mod, fit)],
                                 'Obs':fit.nobs,
                                 'aic':fit.aic,
                                 'bic':fit.bic,
                                 'r2':1-(fit.deviance/ fit.null_deviance),
-                                'rmse':np.sqrt(np.mean((df['y']-fit.predict())**2))
+                                # 'rmse':np.sqrt(np.mean((self['y']-fit.predict())**2))
                                 })
             tab=pd.concat([tab, tmp], axis=0, ignore_index=True)
         return tab
@@ -107,19 +115,57 @@ class regression():
         return formulas
         
 
+    # =====================================================
+    # Summary
+    # =====================================================
     def __get_summary1__(self, fit):
         tab=fit.summary2().tables[1].reset_index( drop=False)
         tab.rename(columns={'index':'term'}, inplace=True)
-        return tab
+        return eDataFrame(tab)
+
 
     def  __get_summary2__(self, fit):
-        tab=summary_col(fit).tables[0]
+        tab=summary_col(fit, stars=True).tables[0]
         tab = pd.DataFrame(tab).reset_index( drop=False)
         tab.rename(columns={'index':'term'}, inplace=True)
-        return tab
+        return eDataFrame(tab)
+
+
+    def  __get_summary3__(self, mod, fit, digits=4):
+        summ = self.__get_summary1__(fit)
+        depvar=mod.endog_names
+        res = (summ
+               .rename(columns={'P>|z|':'pvalue'}, inplace=False)
+               .mutate({'Coef': lambda x: round(x['Coef.'], digits).astype(str)})
+               .case_when('Coef.', {
+                   f"(pvalue<0.001)": f"Coef+'***'",
+                   f"(pvalue<0.01)": f"Coef+'**'",
+                   f"(pvalue<0.05)": f"Coef+'*'",
+                   f"(pvalue<0.1)": f"Coef+'.'",
+                   f"(pvalue>0.1)": f"Coef",
+               })
+               .mutate({'ci': lambda x: [f"({round(xlower, digits)}, {round(xupper, digits)})" for
+                                         xlower, xupper in zip(x['[0.025'], x['0.975]'])]})
+               .filter(['term', 'Coef.', 'ci'])
+               .pivot_longer(id_vars='term', value_vars=None,
+                             var_name='stat', value_name=depvar,
+                             ignore_index=False)
+               .reset_index(drop=False)
+               .sort_values(['index', 'stat'], ascending=True)
+               .case_when('term', {
+                   f"(stat=='ci')": f"''",
+                   f"(stat=='Coef.')": f"term",
+               })
+               .reset_index(drop=True)
+               .drop(['index', 'stat'], axis=1)
+               )
+        return eDataFrame(res)
+
         
-    def table(self, model_names='label',
-              include_stats=['r2', 'bic', 'rmse', 'Obs']):
+
+    def table(self, model_names='label', ci=True,
+              include_stats=['r2', 'bic', 'Obs'],
+              stars=True, labels=None):
         '''
         Create table with all models
         
@@ -128,7 +174,10 @@ class regression():
         '''
         tab_final = pd.DataFrame()
         for i, (idx, row) in enumerate(self.reg.iterrows()):
-            tab = row.summ2
+            if ci:
+                tab = row.summ3
+            else:
+                tab = row.summ2
             depvar=row['mod'].endog_names
             model=f"{row.label}"
             tab = (tab
@@ -146,6 +195,16 @@ class regression():
                 tab_final = (tab_final
                              .merge(tab, how='outer', on=['term', 'estimate'])
                              )
+        terms = []
+        for term_before, term_after in zip(tab_final.term[0:-1],
+                                           tab_final.term[1:]):
+            if term_before==term_after:
+                terms.append(term_after)
+            else:
+                terms.append("")
+        terms.append("")
+        tab_final['term'] = terms
+        # 
         # get stats
         if include_stats:
             assert all([stat in self.reg.columns for stat in include_stats]),(
@@ -161,7 +220,6 @@ class regression():
                  )
             tab_final=pd.concat([tab_final, stats], axis=0)
                 
-                
         if model_names=='label':
             model=f"{row.label}"
         elif model_names=='depvar':
@@ -170,8 +228,120 @@ class regression():
             model=f"{row.label} ({depvar})"
         tab_final=(tab_final
                    .drop(['estimate'], axis=1))
-        return tab_final
+        if labels:
+            tab_final = (tab_final
+                         .replace({'term':labels} , regex=True, inplace=False)
+                         .fillna("")
+                         )
+        #
+        if not stars:
+           tab_final = tab_final.replace({"\**":""} , regex=True, inplace=False) 
+        return eDataFrame(tab_final)
+
+
+    def prediction(self, newdata, model_index=1):
+        '''
+        Get predicted values
+
+        Input:
+           newdata data frame with the same columns used to run the regression
+
+        Output:
+            DataFrame with predicted values
+
+        '''
+        fit = self.reg["fit"][model_index-1]
+        pred = fit.get_prediction(newdata)
+        pred_mean = eDataFrame({"pred":pred.predicted_mean})
+        ci = eDataFrame(pred.conf_int(), columns=['pred_lower',
+                                                  'pred_upper'])
+        pred=(newdata
+              .bind_col(pred_mean,  ignore_index=False)
+              .bind_col(ci,  ignore_index=False) )
+        return eDataFrame(pred)
+        
+
             
+    # =====================================================
+    # Plots
+    # =====================================================
+    def plot_coef(self, model_index=1, sort=True, title=None, labels=None):
+        '''
+        Plot regression coefficients
+
+        Input
+           model_index the index of the model in the regression object
+           sort boolean, if true the values are sorted in the plot
+           title string, the title of the plot
+           labels dict, the labels of the variables. Accepts regular expression.
+        '''
+        tab = self.reg.summ1[model_index-1].loc[lambda x:
+                                              ~x['term'].str.contains(".tercept")]
+        if sort:
+            tab = tab.sort_values(['Coef.'], ascending=True)
+        if labels:
+            tab = tab.replace({'term':labels} , regex=True, inplace=False)
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=[10, 6], tight_layout=True)
+        #
+        ax.errorbar(tab['Coef.'], tab['term'], xerr=tab['Std.Err.'],
+                    fmt='.k', )
+        ax.axvline(0, ymin=0, ymax=1, color='red', linestyle='--', linewidth=1)
+        # grid
+        ax.grid(b=None, which='major', axis='both', linestyle='-', alpha=.3)
+        ax.set_axisbelow(True) # to put the grid below the plot
+        #
+        plt.subplots_adjust(top=.78)
+        xcoord=-.0
+        ycoord=1.01
+        yoffset=.07
+        ax.annotate(title, xy=(xcoord, ycoord),  xytext=(xcoord, ycoord),
+                    xycoords='axes fraction', size=10, alpha=.6)
+        plt.ion()
+        plt.show()
+        return ax
+
+
+    def plot_pred(self, x, newdata=None, model_index=1,
+                  linecolor='black', show_pts=True, pts_color='black',
+                  label=None, grid=True, legend=True,
+                  ci_linetype="--", ci_color='grey',
+                  figsize=[10, 6], ax=None):
+        '''
+        Plot predicted values
+        '''
+        # 
+        if not ax:
+            fig, ax = plt.subplots(nrows=1, ncols=1,
+                                   figsize=figsize, tight_layout=True)
+        #
+        pred = self.prediction(newdata, model_index=model_index)
+        xpred = pred[x]
+        ax.plot(xpred, pred.pred, color=linecolor, label=label)
+        ax.plot(xpred, pred.pred_lower, color=ci_color, linestyle=ci_linetype)
+        ax.plot(xpred, pred.pred_upper, color=ci_color, linestyle=ci_linetype)
+        ax.fill_between(x=xpred, y1=pred.pred_lower, y2=pred.pred_upper,
+                        color=ci_color, alpha=.3)
+        if show_pts:
+            xpts = self.data[x]
+            y = self.reg['mod'][model_index-1].endog_names
+            ypts = self.data[y]
+            ax.scatter(xpts, ypts, color=pts_color, alpha=.4)
+        # -------
+        # Splines (axes lines)
+        # -------
+        ax.spines['bottom'].set_visible(True)
+        ax.spines['left'].set_visible(True)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        if grid:
+            # grid
+            ax.grid(b=None, which='major', axis='both',
+                    linestyle='-', alpha=.3)
+            ax.set_axisbelow(True) # to put the grid below the plot
+        if legend:
+            ax.legend()
+
+        return ax
 
 
 # }}}
