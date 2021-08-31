@@ -31,8 +31,19 @@ import warnings
 
 # {{{ functions }}}
 
-
-def __missing__(x):
+def quantile10(x):
+   res = np.quantile(x, q=.10) 
+   return res
+def quantile25(x):
+   res = np.quantile(x, q=.25) 
+   return res
+def quantile75(x):
+   res = np.quantile(x, q=.75) 
+   return res
+def quantile90(x):
+   res = np.quantile(x, q=.90) 
+   return res
+def count_missing(x):
     res = x.isna().sum()
     return res
 
@@ -65,6 +76,8 @@ def read_csv(**kwargs):
                      sep=kwargs.get('sep', ';'),
                      index_col=kwargs.get('index_col'),
                      decimal=kwargs.get('decimal', '.'),
+                     skiprows=kwargs.get('skiprows', None),
+                     nrows=kwargs.get('nrows', None),
                      encoding=kwargs.get('encoding', 'utf-8')
                      )
     return eDataFrame(df)
@@ -96,6 +109,9 @@ def reorderLegend(ax=None,order=None,unique=False):
     return(handles, labels)
 
 # }}}
+# =====================================================
+# Data
+# =====================================================
 # {{{ spss                  }}}
 
 # will be deprecated soon due to methods naming (old class)
@@ -313,18 +329,38 @@ class read_spss():
 
     Methods can search for variables and load selected vars
     '''
-    def __init__(self, fn):
+    def __init__(self, fn, encoding='utf-8'):
         # df_raw = spss.SavReader(fn, returnHeader=True, rawMode=True)
         self.__fn = fn
+        self.encoding=encoding
         with spss.SavHeaderReader(fn, ioUtf8=True) as header:
             self.__metadata = header.all()
+            self.varLabels = self.__encode_dict__(header.varLabels)
+            valuelabels={}
+            for k, v in header.valueLabels.items():
+                if isinstance(k, bytes) and not isinstance(k, str):
+                    k = k.decode(self.encoding)
+                valuelabels[k] =  self.__encode_dict__(v)  
+            self.__val_labels__ = valuelabels
 
-    def var_list(self, encoding="utf-8"):
-        self.var_search('.', encoding=encoding)
+
+    def val_labels(self, vars=None):
+        if isinstance(vars, str):
+            vars=[vars]
+        var_labels = {}
+        if vars:
+            for var in vars:
+                var_labels[var] = self.__val_labels__[var]
+        else:
+            var_labels=self.__val_labels__
+        return var_labels
         
 
-    def var_search(self, regexp='', show_value_labels=False, get_output=False,
-                   encoding="utf-8"):
+    def var_list(self):
+        self.var_search('.', encoding=self.encoding)
+        
+
+    def var_search(self, regexp='', show_value_labels=False, get_output=False):
         '''
         Search for variables using regular expression
 
@@ -344,11 +380,11 @@ class read_spss():
         for key, label in self.__metadata.varLabels.items():
             if isinstance(label, bytes):
                 try:
-                    label = label.decode(encoding)
+                    label = label.decode(self.encoding)
                 except (OSError, IOError) as e:
                     print(f"Encoding does not work! Try another one!")
             if isinstance(key, bytes):
-                key = key.decode(encoding)
+                key = key.decode(self.encoding)
             if bool(re.search(pattern=regexp, string=label)):
                 vars_found[key] = label
         self.__print_vars_found__(vars_found, show_value_labels)
@@ -416,10 +452,15 @@ class read_spss():
         data['labels'] = data[varname]
         data.replace({'labels':values}, regex=False, inplace=True)
         data = data.filter([varname, 'labels', 'count', 'freq'])
+        if self.__val_labels__[varname]:
+            data.replace({'labels':self.__val_labels__[varname]}, regex=False,
+                         inplace=True)
+        print(self.varLabels[varname])
         if get_output:
             return data
         else:
             print("\n\n")
+            print('\n')
             print(data)
             print("\n\n")
             
@@ -431,11 +472,18 @@ class read_spss():
         print(data.describe())
         print("\n\n")
 
-    def var_values_recode_skeleton(self, varname):
-        dic = self.var_values(varname, False)
+    def var_values_recode_skeleton(self, varname, use='key', quote_key=False):
+        dic = self.__val_labels__[varname]
         print("rec = {\""+varname+"\" : {")
         for k, v in dic.items():
-            print(f"    \"{v}\" : ,")
+            if use=='labels':
+                v = f"\"{v}\""
+                print(f"    {v:20} : {k},")
+            else:
+                if quote_key:
+                    print(f"    \"{k}\" : \"{v}\",")
+                else:
+                    print(f"    {k} : \"{v}\",")
         print("}}")
 
 
@@ -463,9 +511,9 @@ class read_spss():
         f"Variable 'varsnames_new' must be a list or 'None'"
         
         if varnames:
-            varnames = self.__toBytes__(varnames)
+            varnames = self.__toBytes__(varnames).copy()
         else:
-            varnames = self.__metadata.varNames
+            varnames = self.__metadata.varNames.copy()
         print(f"\nLoading values of {len(varnames)} variable(s) ...")
         print(varnames)
         print("\n\n")
@@ -486,7 +534,8 @@ class read_spss():
         # rename
         if varsnames_new:
             self.rename(data, varnames, varsnames_new)
-        return eDataFrame(data)
+        data = eDataFrame(data)
+        return data
 
 
     # ancillary functions
@@ -544,8 +593,17 @@ class read_spss():
     def __toStr__(self, vars):
         for i, varname in enumerate(vars):
             if isinstance(varname, bytes) and not isinstance(varname, str):
-                vars[i] = varname.decode('utf-8')
+                vars[i] = varname.decode(self.encoding)
         return vars
+
+
+    def __encode_dict__(self, dict):
+        res = {}
+        for k, v in dict.items():
+            kstr = self.__toStr__([k])[0]
+            vstr = self.__toStr__([v])[0]
+            res[kstr] = vstr
+        return res
 
 # }}}
 # {{{ Extended DataFrame    }}}
@@ -557,12 +615,175 @@ class eDataFrame(pd.DataFrame):
         super(eDataFrame, self).__init__(*args, **kwargs)
         self.ncol = self.shape[1]
         self.nrow = self.shape[0]
+        self.__create_var_labels__()
+        self.__create_val_labels__()
+        self.set_var_label(vars=kwargs.get("var_labels", None))
+        self.set_val_label(vars=kwargs.get("val_labels", None))
 
     # this method is makes it so our methoeDataFrame return an instance
     # of eDataFrame, instead of a regular DataFrame
     @property
     def _constructor(self):
         return eDataFrame
+
+    # =====================================================
+    # Properties
+    # =====================================================
+    # variables 
+    # ---------
+    def __create_var_labels__(self):
+        self.__var_labels__=None
+        self.__var_labels__={}
+        for var in self.columns:
+            self.__var_labels__[var]=var
+
+
+    def set_var_label(self, vars=None):
+        '''
+        Set labels for the variables
+        
+        Input
+           vars  : a dictionary. Keys are the variable names, values are
+                   their labels
+        '''
+        if vars:
+            for var, label in vars.items():
+                self.__var_labels__[var] = label
+
+
+    def get_var_label(self, vars=None, regexp=None):
+        '''
+        Variables have names and labels. This function retrieves the labels
+        given the name of a regexp to match the name
+        '''
+        if isinstance(vars, str):
+            vars=[vars]
+        res={}
+        if regexp:
+            res={var:lab for var, lab in self.__var_labels__.items()
+                 if bool(re.search(pattern=regexp, string=var))}
+        else:
+            if not vars:
+                vars = list(self.__var_labels__.keys())
+            for var in vars:
+                if var in list(self.__var_labels__):
+                    res[var]=self.__var_labels__[var]
+        res = (eDataFrame(res, index=range(1))
+               .pivot_longer(id_vars=None, value_vars=list(res.keys()),
+                             var_name='var', value_name='label',
+                             ignore_index=True))
+        return res
+            
+
+    def get_var_name(self, labels=None, regexp=None):
+        '''
+        Variables have names and labels. This function retrieves the name
+        given the labels of a regexp to match the label
+        '''
+        if isinstance(labels, str):
+            labels=[labels]
+        if not labels:
+            labels = list(self.__var_labels__.values())
+        res={}
+        if regexp:
+            for var, lab in self.__var_labels__.items():
+                if bool(re.search(pattern=regexp, string=lab)):
+                    res[var]=lab
+        else:
+            for label in labels:
+                for var, lab in self.__var_labels__.items():
+                    if label == lab:
+                        res[var]=lab
+        res = (eDataFrame(res, index=range(1))
+               .pivot_longer(id_vars=None, value_vars=list(res.keys()),
+                             var_name='var',
+                             value_name='label', ignore_index=True)
+               )
+        return res
+
+    def use_var_label(self, vars=None):
+        '''
+        Replace variable (column) name by their labels
+        
+        Input
+           vars a list or string with the variable (column) names to replace
+                with their labels
+        '''
+        if not vars:
+            vars=list(self.__var_labels__.keys())
+        if isinstance(vars, str):
+            vars=[vars]
+        for var in vars:
+            var_label = self.__var_labels__.get(var, var)
+            self.rename(columns={var:var_label} , inplace=True)
+
+
+    def use_var_name(self, vars=None):
+        if isinstance(vars, str):
+            vars=[vars]
+        if not vars:
+            vars=list(self.__var_labels__.keys())
+        for var in vars:
+            var_label = self.__var_labels__.get(var, var)
+            self.rename(columns={var_label:var} , inplace=True)
+
+    # values 
+    # ------
+    def __create_val_labels__(self):
+        self.__val_labels__=None
+        self.__val_labels__={}
+
+
+    def set_val_label(self, vars=None):
+        '''
+        Set variable labels
+
+        Input
+           vars a dictionary of dictionaries. The first key must be a variable
+                 name. The inner dictionary the variable labels
+        '''
+        if vars:
+            for var, label in vars.items():
+                self.__val_labels__[var] = label
+
+
+    def get_val_label(self, var=None):
+        '''
+        Get variable labels
+        '''
+        assert isinstance(var, str), "'var' must be a string"
+        res={}
+        if var not in self.columns:
+            print(f"{var} is not in the columns of the DataFrame")
+        else:
+            res=self.__val_labels__.get(var, {})
+            if not res:
+                for v, lab in self.__val_labels__.items():
+                    if var == lab:
+                        res=self.__val_labels__.get(v, {})
+                        break
+            return {var:res}
+
+
+    def use_val_label(self, var=None):
+        rec=self.get_val_label(var=var)
+        self.replace(rec, regex=False, inplace=True)
+
+
+    def use_val_value(self, var=None):
+        if var not in self.columns:
+            print(f"{var} is not in the columns of the DataFrame")
+        rec={}
+        val_labels = self.get_val_label(var=var)
+        if not val_labels:
+            var=self.get_var_name(labels=var).query(f"var=='{var}'")[var]
+            print(var)
+            val_labels = self.get_val_label(var=var)
+            print(val_labels)
+        for value, label in val_labels[var].items():
+            rec[label]=value
+        self.replace({var:rec}, regex=False, inplace=True)
+
 
     # =====================================================
     # Data wrangling
@@ -591,9 +812,29 @@ class eDataFrame(pd.DataFrame):
                        inplace=True)
         return eDataFrame(res)
 
-
     def pivot_longer(self, id_vars, value_vars=None,
                      var_name=None, value_name='value', ignore_index=True):
+        '''
+        Reshape the DataFrame to a long format
+        
+        Input
+           id_vars None, string, np.array, or a list of columns in the DataFrame. If None, it will
+                   use all variables not in 'value_vars'
+        '''
+        if isinstance(id_vars, np.ndarray):
+            id_vars = id_vars.tolist() 
+        assert isinstance(id_vars, list) or isinstance(id_vars, str) or not id_vars, (
+            "id_vars must be a list, string, or None"
+        )
+        if not id_vars:
+            value_vars = [value_vars] if isinstance(value_vars, str) else value_vars
+            id_vars = (
+                self
+                .drop(value_vars, axis=1)
+                .columns
+                .values
+                .tolist()
+            )
         res = pd.melt(self, id_vars=id_vars, value_vars=value_vars,
                        var_name=var_name, value_name=value_name,
                        ignore_index=ignore_index)
@@ -602,11 +843,32 @@ class eDataFrame(pd.DataFrame):
 
     def pivot_wider(self, id_vars=None, cols_from=None, values_from=None,
                     aggfunc='sum', sep="_"):
+        '''
+        Reshape the DataFrame to a long format
+        
+        Input
+           id_vars None, string, np.array, or a list of columns in the DataFrame. If None, it will
+                   use all variables not in 'cols_from' and 'values_from'
+        '''
+        if isinstance(id_vars, np.ndarray):
+            id_vars = id_vars.tolist() 
+        assert isinstance(id_vars, list) or isinstance(id_vars, str) or not id_vars, (
+            "id_vars must be a list, string, or None"
+        )
+        if not id_vars:
+            id_vars = (
+                self
+                .drop([cols_from, values_from], axis=1)
+                .columns
+                .values
+                .tolist()
+            )
         res = (self
                .pivot_table(values=values_from, index=id_vars,
                             columns=cols_from, aggfunc=aggfunc)
                .reset_index(drop=False)
                )
+        res = eDataFrame(res)
         try:
             res = res.flatten_columns()
         except (OSError, IOError, AssertionError) as e:
@@ -653,7 +915,13 @@ class eDataFrame(pd.DataFrame):
             res = res.assign(**{k: v})
             res = res.loc[:, ~res.columns.duplicated(keep='last')]
         return res
-        
+
+    def mutate_rowwise(self, dict):
+        res = self
+        for k, v in dict.items():
+            res = res.assign(**{k:lambda x: x.apply(v, axis=1)})
+            res = res.loc[:, ~res.columns.duplicated(keep='last')]
+        return res
 
     def bind_row(self, df):
         res =  pd.concat([self, df], axis=0, ignore_index=True)
@@ -836,6 +1104,137 @@ class eDataFrame(pd.DataFrame):
         return eDataFrame(res)
 
 
+    def reorder(self, var, order):
+        res = (self
+               .set_index(var, drop=False)
+               .reindex(order)
+               .reset_index(drop=True)
+               )
+        return eDataFrame(res)
+
+    def insert_row(self, newrow, index):
+        '''
+        Insert a new row on position 'index'
+        
+        Input
+           newrow a dict with the new row
+           index integer with row position to insert the new row. If None,
+                 insert at the end of the DataFrame
+        '''
+        assert isinstance(newrow, dict), "newrow must be a dict"
+        if not index:
+            index = self.index.max() + 1
+        newrow = pd.DataFrame(newrow, index=[index-.5])
+        res = (self
+               .append(newrow, ignore_index=False)
+               .sort_index()
+               .reset_index(drop=True)
+               )
+        return eDataFrame(res)
+
+
+    def nest(self, group):
+        assert isinstance(group, str) or isinstance(group, list), "'group' "+\
+        "must be a list of strings or a string"
+        # 
+        if isinstance(group, str):
+            group = [group]
+        def nest_df(df):
+            return [df]
+        res = (
+            self
+            .groupby(group)
+            .apply(nest_df)
+            .reset_index(drop=False, name='data')
+        )
+        res['data'] = res[['data']].apply(lambda x: x['data'][0], axis=1)
+        return eDataFrame(res)
+
+    def unnest(self, col, id_vars):
+        '''
+        Unnest a nested data frame
+
+        Input:
+           col     : name of the column that contains the nested data.frame
+           id_vars : list of variables in the nested data frame
+                     to use as id in the unnested one
+        '''
+        # assert isinstance(self[col])
+        if len(id_vars)>1:
+            placeholder = "__XXplaceholderXX__"
+            placeholder_list=[placeholder]*min(len(id_vars), 1)
+            regexp=f"(.*){'(.*)'.join(placeholder_list)}(.*)"
+            res = (
+                self
+                .mutate_rowwise(
+                    {col: lambda x:
+                     (x[col]
+                      .mutate({'id': placeholder.join([str(s) for s in x[id_vars]])})
+                      .separate(col="id", into=id_vars, regexp=regexp, keep=False))
+                     })
+            )
+        else:
+            res = (
+                self
+                .mutate_rowwise(
+                    {col: lambda x:
+                     (x[col]
+                      .mutate({'id': x[id_vars[0]]})
+                      )})
+            )
+        res = [df for df in res[col]]
+        res = pd.concat(res)
+        return eDataFrame(res)
+        
+
+    def recode_skeleton_print(self, var):
+        vals = self[var].drop_duplicates().tolist()
+        print("rec = {\"<varnew>\" : {")
+        for v in vals:
+            v = f"\"{v}\""
+            print(f"    {v:20} : \"\",")
+        print("}}")
+
+
+    def select(self, vars=None, regex=None):
+        '''
+        Input
+           vars string, list, or dict with the variables to select.
+                If a dict, it renames the variables; the keys must be the old
+                names of the variables to select, and the values of the dict
+                the new names.
+           regex a string with a regular expression. It return the variables
+                 that match it
+
+        Ouput
+           a eDataFrame with only the columns selected
+        '''
+        if regex:
+            res = self.filter(regex=f"regex")
+        elif isinstance(vars, dict):
+            res = (
+                self
+                .rename(columns=vars, inplace=False)
+                .filter(list(vars.values()))
+            )
+        else:
+            if isinstance(vars, str):
+                vars = [vars]
+            res = self.filter(vars)
+        return eDataFrame(res)
+            
+    
+
+    # def reset_index(self, name=None, drop=False):
+    #     return eDataFrame(self.reset_index(drop=drop, name=name))
+
+    # =====================================================
+    # group by
+    # =====================================================
+    def groupby(self, group, *args, **kwargs):
+        res = egroupby(self, group)
+        return res
+        
 
     # =====================================================
     # Statistics
@@ -848,18 +1247,43 @@ class eDataFrame(pd.DataFrame):
         return self.loc[idx,:]
 
 
-    def summary(self, vars, funs={'N':'count', "Missing":__missing__,
-                                  'Mean':'mean','Std.Dev':'std', 
-                                  'Min':'min', "Max":'max'},
+    def summary(self, vars=None, funs={'N':'count', "Missing":count_missing,
+                                       'Mean':'mean',
+                                       'Std.Dev':'std',
+                                       # "Q25":quantile25,
+                                       'Median':'median',
+                                       # "Q75":quantile75,
+                                       'Min':'min', "Max":'max'},
                 groups=None, wide_format=None):
+        '''
+        Compute summary of numeric variables
+
+        Input
+           vars a string or a list with columns to compute the summary. If
+                None, compute summary for all numerical variables
+           funs a dictionary of function labels (key) and functions (value)
+                to use for the summary. Default values use some common
+                summary functions (mean, median, etc.)
+           groups a string or list with variable names. If provided, compute
+                  the summaries per group
+           wide_format if True, return results in a wide_format
+        
+        Output
+          eDataFrame with summary
+        '''
+        if not vars:
+            vars = self.select_dtypes(exclude = ['object']).columns.values.tolist()
+        if groups and not isinstance(groups, list):
+            groups = [groups]
+        if vars and not isinstance(vars, list):
+            vars = [vars]
         assert isinstance(funs, list) or isinstance(funs, dict),\
         ("'funs' must be a list or a dictionary of functions")
         assert isinstance(vars, list), "'vars' must be a list of variable names"
-        # 
+        funs_labels={}
         if isinstance(funs, dict):
             funs_names = list(funs.values())
             funs = {fun:fun_name for fun_name, fun in funs.items()}
-            funs_labels={}
         else:
             funs_names = funs
             funs = {fun:fun_name for fun_name, fun in zip(funs, funs)}
@@ -874,11 +1298,11 @@ class eDataFrame(pd.DataFrame):
         else:
             res = self.__summary__(vars, funs_names)
         # 
-        cols = list(res.columns)
-        cols = [col for col in cols if col not in funs_names]
-        res = res.filter(cols+funs_names)
-        # 
         res.rename(columns=funs_labels, inplace=True)
+        cols = list(res.columns)
+        cols = [col for col in cols if col not in list(funs_labels.keys())]
+        res = res.filter(cols+list(funs_labels.keys()))
+        # 
         return eDataFrame(res)
 
 
@@ -969,6 +1393,10 @@ class eDataFrame(pd.DataFrame):
             DataFrame with frequencies
 
         '''
+        if not isinstance(vars, list):
+            vars = [vars]
+        if condition_on and not isinstance(condition_on, list):
+            condition_on = [condition_on]
         if condition_on:
             if not all([cond_on in vars for cond_on in condition_on]):
                 for cond_on in condition_on:
@@ -1010,6 +1438,12 @@ class eDataFrame(pd.DataFrame):
                    .apply(compute_stdev)
                    .sort_values(by=(condition_on+vars),  ascending=True)
             )
+        # confidence intervals
+        res = (
+            res
+            .mutate({"lo": lambda x: x['freq']-1.96*x['stdev']})
+            .mutate({"hi": lambda x: x['freq']+1.96*x['stdev']})
+        )
         return eDataFrame(res)
 
     def ci_t(self, var, alpha=.95):
@@ -1152,30 +1586,52 @@ class eDataFrame(pd.DataFrame):
 
     def tab(self, vars_row, vars_col, groups=None,
             margins=True,normalize='all',#row/columns
-             margins_name='Total', report_format=False):
-        # if groups:
-        #     groups = list(groups) if isinstance(groups, str) else groups
-        #     groups = self[groups].drop_duplicates()
-        #     print(groups)
-        resn = self.__tab__(vars_row, vars_col, normalize=False,
-                            margins=margins, margins_name=margins_name)
-        resp = self.__tab__(vars_row, vars_col, normalize=normalize,
-                            margins=margins, margins_name=margins_name)
-        colsn=resn.columns[1:]
-        colsp=resp.columns[1:]
-        res=pd.DataFrame()
-        res[resp.columns[0]]=resp.iloc[:,0]
+            margins_name='Total', report_format=True, digits=2):
+        tab = self.copy()
+        tab[vars_row] = tab[vars_row].astype(str)
+        tab[vars_col] = tab[vars_col].astype(str)
+        if groups:
+            groups = [groups] if isinstance(groups, str) else groups
+            ngroups=len(groups)
+            resn = tab.__tab_groups__(vars_row, vars_col, normalize=False,
+                                       margins=margins, margins_name=margins_name,
+                                       groups=groups)
+            resp = tab.__tab_groups__(vars_row, vars_col, normalize,
+                                       margins, margins_name, groups)
+        else:
+            ngroups=0
+            resn = tab.__tab__(vars_row, vars_col, normalize=False,
+                                margins=margins, margins_name=margins_name)
+            resp = tab.__tab__(vars_row, vars_col, normalize=normalize,
+                                margins=margins, margins_name=margins_name)
+        colsn=resn.columns[ngroups+1:]
+        colsp=resp.columns[ngroups+1:]
+        res=eDataFrame(resp.iloc[:,0:ngroups+1])
         if report_format:
             for coln, colp in zip(colsn, colsp):
-                col = [f"{round(100*p, 2)} ({n})" for p,n
+                col = [f"{round(100*p, digits)} ({n})" for p,n
                        in zip(resp[colp], resn[coln])]
-                res[coln]= col
+                res = res.mutate({coln:col})
         else:
             for coln, colp in zip(colsn, colsp):
                 res[coln]=resn[coln]
                 res[str(colp)+"_freq"]=100*resp[colp]
         return eDataFrame(res)
 
+
+    def __tab_groups__(self, vars_row, vars_col, normalize,
+                       margins, margins_name, groups):
+        res = (self.
+               groupby(groups)
+               .apply(eDataFrame.__tab__,
+                      vars_row, vars_col, normalize, margins, margins_name)
+               .reset_index(drop=False)
+        )
+        cols = [col for cidx, col in enumerate(list(res.columns) ) if
+                not bool(re.search(pattern='^level_[0-9]$', string=col))]
+        res=res.filter(cols)
+        return eDataFrame(res)
+        
 
     def tabn(self, vars_row, vars_col, normalize=False, margins=True,
              margins_name='Total'):
@@ -1221,7 +1677,6 @@ class eDataFrame(pd.DataFrame):
             print("\nNo column name matches the regexp!\n")
             
 
-
     def to_org(self, round=4):
         res = self
         if round:
@@ -1246,24 +1701,49 @@ class eDataFrame(pd.DataFrame):
         self.columns = new_columns
         return self
 
-    def scale(self, vars=None, exclude=None, centralize=True, center='mean'):
+
+    def flatten(self, drop=True):
+        ngroups=len(self.index.codes)
+        idx = self.index.codes[ngroups-1]
+        res=self.reset_index(drop=drop).set_index(idx).sort_index()
+        return res
+
+    def scale(self, vars=None, exclude=None, centralize=True, center='mean',
+              group=None, newnames=None):
         '''
         Rescale variables by dividing it by its standard deviation
 
         Input:
-            vars    : list with variables to scale. If 'None', it will
-                      scale all numerical variables
-            exclude : list with variables NOT to scale. If 'None', it will
+            vars    : string, dict, or list with variables to scale. If 'None', 
+                      it will scale all numerical variables. If using a dict,
+                      the keys will be the names of the new rescale variables
+            exclude : string or list with variables NOT to scale. If 'None', it will
                       scale all numerical variables in the argument 'vars'
             centralize: boolean, if True will recenter the variables
             center    : either 'mean' or a number to use as the center
-        
+            newnames  : string or list with name of the new rescaled variable.
+                        if None, overwrite the original variable. It has no
+                        effect when 'vars' is a dict
         Output
             dataframe with variables rescaled
         '''
+        if isinstance(vars, str):
+            vars = [vars]
+        elif isinstance(vars, dict):
+           newnames = list(vars.keys()) 
+           vars = list(vars.values()) 
+        else:
+            if isinstance(newnames, str):
+                newnames = [newnames]
+        if isinstance(exclude, str):
+            exclude = [exclude]
+        if isinstance(newnames, list):
+            for var, newvar in zip(vars, newnames):
+                self = self.mutate({newvar: lambda x: x[var]})
+                vars = newnames
         self = self.__rescale__(vars=vars, exclude=exclude,
                                 centralize=centralize, scale=True,
-                                center=center)
+                                center=center, group=group)
         return self
 
     def centralize(self, vars=None, exclude=None, center='mean'):
@@ -1282,11 +1762,12 @@ class eDataFrame(pd.DataFrame):
             dataframe with variables rescaled
         '''
         self = self.__rescale__(vars=vars, exclude=exclude,
-                                centralize=True, scale=False, center=center)
+                                centralize=True, scale=False, center=center,
+                                group=None)
         return self
 
     def __rescale__(self, vars=None, exclude=None, centralize=False,
-                    scale=False, center='mean'):
+                    scale=False, center='mean', group=None):
         assert (center=='mean' or isinstance(center, float) or
                 isinstance(center, int)), ("'center' must be either the string "+
                                            "'mean' or a number")
@@ -1311,6 +1792,115 @@ class eDataFrame(pd.DataFrame):
             self[var]=x
         return self
 
+
+    def tolatex(self, fn=None, na_rep="", table_env=True,
+                align=None,
+                add_hline=None,
+                add_blank_row=None,
+                add_row_group=None,
+                # 
+                escape=False,
+                index=False,
+                float_format=None,
+                longtable=None,
+                encoding=None,
+                decimal='.',
+                # 
+                caption=None,
+                label=None,
+                **kws):
+        '''
+        Extension of to_latex pandas' function
+        
+        Input
+           fn : path to save the .tex table
+           table_env : boolean, if True uses latex table environment. Otherwise
+                       uses only tabular
+           align : string with align features (e.g., llp{7cm})
+           add_hline  : a list with the line number to draw a horizontal line 
+                        in the table
+           add_blank_row : a list with the line number to add a blank in 
+                           the table
+           add_row_group : a dict with the line number (key) and the text (value) 
+                           to add on that line as a multiline text. 
+                           Useful to group rows.
+        '''
+        pdcolw = pd.get_option('display.max_colwidth')
+        pd.set_option('display.max_colwidth', None)
+        # 
+        # self = self.reset_index(drop=True)
+        self.index = range(1, self.nrow+1)
+        if add_hline:
+            add_hline = [l+.5 for l in add_hline]
+            d = self.iloc[0].to_dict()
+            d = {k:np.nan  for k in d.keys()}
+            d[self.columns[0]] = '\midrule'
+            d = eDataFrame(d, index=add_hline)
+            self = (
+                self
+                .append(d, ignore_index=False)
+                .sort_index()
+            )
+            escape=False
+        if add_blank_row:
+            add_blank_row = [l+.6 for l in add_blank_row]
+            d = self.iloc[0].to_dict()
+            d = {k:np.nan  for k in d.keys()}
+            d = eDataFrame(d, index=add_blank_row)
+            self = (
+                self
+                .append(d, ignore_index=False)
+                .sort_index()
+            )
+            escape=False
+        if add_row_group:
+            dres = eDataFrame()
+            ncol = self.ncol
+            idx = []
+            for row, text in add_row_group.items():
+                row_idx = row-.1
+                idx += [row_idx]
+                d = self.iloc[0].to_dict()
+                d = {k:np.nan  for k in d.keys()}
+                d[self.columns[0]] = f"\multicolumn{{{ncol}}}{{l}}{{\textbf{{{text}}}}}"
+                d = eDataFrame(d, index=[row_idx])
+                dres = dres.bind_row(d)
+            dres.index = idx
+            self = (
+                self
+                .append(dres, ignore_index=False)
+                .sort_index()
+            )
+            escape=False
+            
+        tab = (
+            self
+            .to_latex(na_rep=na_rep, index=index, escape=escape,
+                      caption=caption, label=label, **kws)
+        )
+        if align:
+            tab = tab.replace('begin\{tabular\}\{.*\}',
+                              f'{{begin{{tabular}}{align}}}')
+            tab = re.sub(pattern="begin{tabular}\{.*\}",
+                         repl=f'begin{{tabular}}{{{align}}}',
+                         string=tab)
+        if add_hline:
+            tab = re.sub(pattern='\\\\midrule.*', repl='\\\\midrule', string=tab)
+        if add_row_group:
+            tab = tab.split("\\\\\n")
+            tab = [re.sub(pattern='&', repl="", string=txti) if
+                   bool(re.search(pattern='\\\\multicolumn', string=txti)) else
+                   txti for txti in tab ]
+            tab = "\\\\\n".join(tab)
+        if table_env and not caption and not label:
+            tab = "\\begin{table}\n" + tab + "\\end{table}"
+        if fn:
+            with pd.option_context('display.max_colwidth', None):
+                with open(fn, "w+") as f:
+                    f.write(tab)
+        pd.set_option('display.max_colwidth', pdcolw)
+        return tab
+        
 
     # =====================================================
     # Plots
@@ -1948,7 +2538,55 @@ class eDataFrame(pd.DataFrame):
                 linestyle=grid_linetype, alpha=grid_alpha)
         ax.set_axisbelow(True) # to put the grid below the plot
 
+
+
+class egroupby(pd.core.groupby.DataFrameGroupBy):
+    '''
+    Extends the functionalities of pandas groupby class
+    '''
+    def __init__(self,  *args, **kwargs):
+        super(egroupby, self).__init__(*args, **kwargs)
+
+    @property
+    def _constructor(self):
+        return egroupby
+
+    def mutate(self, dict, flatten=True):
+        res=self.apply(lambda x: x.mutate(dict))
+        if flatten:
+            res = res.flatten()
+        return res
+
+
+    def scale(self, *args, **kws):
+        res=self.apply(lambda x: x.scale(*args, **kws))
+        return res
+
+    def pivot_longer(self, flatten=True, *args, **kws):
+        res=self.apply(lambda x: x.pivot_longer(*args, **kws))
+        if flatten:
+            res = res.flatten(drop=True)
+        return res
+        
+
+    def freq(self, *args, **kws):
+        res=(self.apply(lambda x: x.freq(*args, **kws))
+             .reset_index(drop=False)
+             # .filter(regex=f"^[level_[0-9]*]")
+        )
+        return res
+        
+
+
+
+# =====================================================
+# Ancillary
+# =====================================================
+
 # }}}
+# =====================================================
+# Plots
+# =====================================================
 # {{{ Extended Slider }}}
 
 class eSlider(Slider):
@@ -2059,3 +2697,6 @@ class eTextBox(TextBox):
 
 
 # }}}
+# =====================================================
+# Models
+# =====================================================

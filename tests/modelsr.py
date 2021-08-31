@@ -10,6 +10,23 @@ from statsmodels.api import families as family
 import warnings
 import itertools
 from statsmodels.iolib.summary2 import summary_col
+# ---------
+# R objects 
+# ---------
+import rpy2.robjects as robj
+import rpy2.robjects.lib.ggplot2 as ggplot2
+from rpy2.robjects import r, FloatVector, pandas2ri, StrVector
+from rpy2.robjects.packages import importr
+pandas2ri.activate()
+stats = importr('stats')
+base = importr('base')
+jtools = importr('jtools')
+broom = importr('broom')
+scales=importr("scales")
+sjp=importr("sjPlot")
+graphics=importr("graphics")
+grd=importr("grDevices")
+ggplot=importr("ggplot2")
 
 # {{{ regression models   }}}
 
@@ -523,6 +540,266 @@ class regression():
 
         return ax
 
+
+    # =====================================================
+    # R engine
+    # =====================================================
+    # regressions 
+    # -----------
+    def __run_binomialr__(self, formula, family, na, *args, **kws):
+        reg={}
+        for label, formula in formula.items():
+            print(f"Running Binomial regression: {formula}...")
+            # 
+            tab, omitted = self.__get_data__(formula, na)
+            fit = r.glm(formula, data=tab, family=family)
+            summaryd = r.summary(fit, conf_int=True)
+            summaryt = broom.tidy_glm(fit)
+            summaryt.columns = summaryt.columns.str.replace(".", "_")
+            reg[label] = self.__collect_summary__(fit, formula, family,
+                                                  function='stats::glm',
+                                                  summary_tidy=summaryt,
+                                                  summary_default=summaryd,
+                                                  omitted=omitted)
+        return reg
+
+
+    # ancillary 
+    # ---------
+    def __reprr__(self):
+        models=[]
+        model_names=[]
+        digits=2
+        for label, info in self.regression.items():
+            model_names.append(label)
+            models.append(info['fit'])
+        error_format = (f"({{round(conf.low, {digits})}}, "+
+                        f"{{round(conf.high, {digits})}})")
+        res = jtools.export_summs(models,
+                                  # coefs=coefs_namedvec,
+                                  model_names=model_names, 
+                                  number_format=digits,
+                                  ci_level=.95,
+                                  error_format = error_format
+                                  )
+        res = eDataFrame(res)
+        res = self.__reprr_round__(res, digits=4, model_names=model_names)
+        res.columns=['']*res.ncol
+        print(res)
+
+    def __reprr_round__(self, tab, digits, model_names):
+        if isinstance(model_names, list):
+            model_names = {m:m for m in model_names}
+        for k, col in model_names.items():
+            tab = tab.separate(col=col,
+                               into=[f"{col}-pvalue"],
+                               regexp=" *(\**|\.*)$", keep=True)
+            colvalues = tab[col]
+            col_clean = [re.sub(pattern=" (\.|\**)$", repl="", string=val) for val in colvalues]
+            new_col=[]
+            for row in col_clean:
+                try:
+                    value = round(float(row), digits)
+                except (ValueError) as e:
+                    value = row
+                new_col.append(value)
+            new_col
+            tab[col]=new_col
+            tab = tab.combine([col, f"{col}-pvalue"], colname=col, sep=' ')
+            tab = tab.drop([f"{col}-pvalue"], axis=1)
+        return tab
+
+    def __plot_coefr_get_coef_names__(self, coefs):
+        if coefs:
+            coefs_namedvec = StrVector(coefs.keys())
+            coefs_namedvec.names = StrVector(coefs.values())
+        else:
+            coefs_namedvec=robj.NULL
+        return coefs_namedvec
+
+
+    def __plot_coefr_get_model_names__(self, model_names):
+        if not model_names:
+            model_names={k:k for k in self.regression.keys()} 
+        model_names_namedvec = StrVector(model_names.values())
+        model_names_namedvec.names = StrVector(model_names.keys())
+        return model_names_namedvec 
+
+    # -----
+    # Plots 
+    # -----
+    def __plot_coefr__(self, args):
+        model            =args['model']
+        title            =args['title']
+        sort             =args['sort']
+        # 
+        scale            =args['scale']
+        palette          =args['palette']
+        # 
+        ylab_wrap        =args['ylab_wrap']
+        xlab_wrap        =args['xlab_wrap']
+        coord_flip       =args['coord_flip']
+        coefs            = self.__plot_coefr_get_coef_names__(args['coefs'])
+        model_names      = self.__plot_coefr_get_model_names__(args['model_names'])
+        # 
+        mods=self.__get_fit_list__(model)
+        # 
+        # plot
+        g=jtools.plot_coefs(mods,
+                            colors=palette,
+                            coefs = coefs,
+                            model_names=model_names
+                            )
+        g = g + ggplot.coord_flip() if coord_flip else g
+        g = self.__plotr_theme__(g, args)
+        g = self.__plotr_legend__(g, args)
+        g = self.__plotr_axis_labels__(g, args)
+        g = g + ggplot.scale_y_discrete(labels = scales.wrap_format(ylab_wrap))
+        # saving
+        self.__plotr_save__(g, args)
+        print(g)
+        return g
+
+
+    def __plot_predr__(self, args):
+        terms            = args.get('terms')
+        terms            = robj.NULL if not terms else terms
+        model            = args.get('model', None)
+        title            = args.get('title')
+        title            = title if title else ''
+        type             = args.get('which')
+        sort             = args['sort']
+        show_p           = args['show_p']
+        show_data        = args['show_data']
+        jitter           = args['jitter']
+        # 
+        palette          = args['palette']
+        grid             = args['grid']
+        # 
+        # 
+        wrap_title       = args['wrap_title']
+        wrap_labels      = args['wrap_labels']
+        fn               = args['fn']
+        if model:
+            mod=self.__get_fit_list__(model)
+        else:
+            print(f'\n\nNo model provided. Plotting the first model.\n\n')
+            mod1 = [*self.regression][0]
+            mod = self.regression[mod1]['fit']
+        g= sjp.plot_model(mod,
+                          terms       = terms,
+                          show_p      = show_p,
+                          show_data   = show_data,
+                          jitter      = jitter,
+                          title       = title,
+                          colors      = palette,
+                          grid        = grid,
+                          wrap_title  = wrap_title ,
+                          wrap_labels = wrap_labels,
+                          #"est", "re", "eff", "emm", "pred", "int", 
+                          #"std", "std2", "slope", "resid", "diag"
+                          type        =type
+                          )
+        g = self.__plotr_theme__(g, args)
+        g = self.__plotr_grid__(g, args)
+        g = self.__plotr_legend__(g, args)
+        g = self.__plotr_axis_labels__(g, args)
+        # g = g + ggplot.scale_y_discrete(labels = scales.wrap_format(ylab_wrap))
+        # g = g + ggplot.scale_x_continuous(expand = FloatVector([0, 0]))
+        # saving
+        self.__plotr_save__(g, args)
+        print(g)
+        return(g)
+
+
+    def __plotr_legend__(self, g, args):
+        legend_ncol           = args['legend_ncol']
+        legend_position       = args['legend_position']
+        legend_direction      = args['legend_direction']
+        legend_title          = args['legend_title']
+        legend_title_position = args['legend_title_position']
+        legend_ha             = args['legend_ha']
+        legend_va             = args['legend_va']
+        g = (g
+             + ggplot.theme(
+                 legend_position = legend_position,
+                 legend_direction= legend_direction,
+                 legend_justification = FloatVector([legend_ha, legend_va]))
+             + ggplot.guides(
+                 color=ggplot.guide_legend(ncol=legend_ncol,
+                                           title_position=legend_title_position,
+                                           title=legend_title),
+                 fill=ggplot.guide_legend(ncol=legend_ncol,
+                                          title_position=legend_title_position,
+                                          title=legend_title),
+                 shape=ggplot.guide_legend(ncol=legend_ncol,
+                                           title_position=legend_title_position,
+                                           title=legend_title),
+                             )
+        )
+        return g
+
+    def __plotr_theme__(self, g, args):
+        if args['theme']=='bw':
+            g = g + ggplot.theme_bw()
+        return g
+
+    def __plotr_axis_labels__(self, g, args):
+        coord_flip = args['coord_flip']
+        xlab=args['xlab'] if not coord_flip else args['ylab']
+        ylab=args['ylab'] if not coord_flip else args['xlab']
+        g = g + ggplot.xlab(xlab) if xlab else g
+        g = g + ggplot.ylab(ylab) if ylab else g
+        return g
+
+    def __plotr_grid__(self, g, args):
+       g = (g
+            + ggplot.theme(
+                panel_grid_major=ggplot.element_line( linetype=3, size=.5),
+                panel_grid_minor=ggplot.element_line( linetype=3, size=.5),
+                panel_grid_major_y=ggplot.element_line( size=.7),
+                panel_grid_minor_y=ggplot.element_line( size=.5),
+                panel_grid_major_x=ggplot.element_blank(),
+                panel_grid_minor_x=ggplot.element_blank()) 
+            )
+       return g
+
+    def __plotr_strip__(self, g, args):
+        g = (g
+            + ggplot.theme(
+                strip_background = ggplot.element_rect(colour="white", fill="white"),
+                strip_text=ggplot.element_text(size=11, hjust = 0, face = 'bold'),
+                strip_text_x=ggplot.element_text(size=11, hjust = 0),
+                strip_text_y=ggplot.element_text(size=11)
+                )
+            )
+        return g
+
+    def __plotr_border__(self, g, args):
+        g = (g
+             + ggplot.theme(
+                # panel_grid_major=ggplot.element_line(alpha=.4, size=.5),
+                # panel_grid_minor=ggplot.element_line(alpha=.13, size=.5),
+                panel_border = ggplot.element_blank(),
+                axis_line=ggplot.element_blank(),
+                axis_line_x=ggplot.element_line(size=.5),
+                axis_line_y=ggplot.element_line(size=.5),
+            ))
+        return g
+
+    def __plotr_save__(self, g, args):
+        height=args['height']
+        width=args['width']
+        height = height if height else 7
+        width = width if width else 8
+        fn = args['fn']
+        if fn:
+            fn = os.path.expanduser(fn)
+            fn1 = os.path.splitext(fn)[0]+'.pdf'
+            fn2 = os.path.splitext(fn)[0]+'.png'
+            ggplot.ggsave(g, filename=fn1, height=height, width=width)
+            ggplot.ggsave(g, filename=fn2, height=height, width=width)
+            print(f"\nPlot {fn} saved!\n")
 
 
 # }}}
