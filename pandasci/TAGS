@@ -1,224 +1,221 @@
 
-/home/diogo/Dropbox/CienciasSociais/studies/computing/python/src/dev/pandasci/pandasci/ds.py,8271
-def count_missing(x):count_missing34,985
-def read_data(**kwargs):read_data38,1048
-def read_csv(**kwargs):read_csv62,1694
-def read_dta(**kwargs):read_dta71,2058
-def read_xls(**kwargs):read_xls75,2148
-def reorderLegend(ax=None,order=None,unique=False):reorderLegend87,2472
-class spss_data():spss_data104,3343
-    def __init__(self, fn):__init__114,3611
-    def search_var(self, regexp='', show_value_labels=False, get_output=False):search_var121,3840
-    def get_var(self, regexp='', show_value_labels=False):get_var136,4432
-    def list_vars(self, show_value_labels=False):list_vars142,4698
-    def get_values(self, key, print_values=True):get_values146,4773
-    def values_freq(self, var):values_freq168,5558
-    def values_summary(self, var):values_summary181,6157
-    def values_print_recode_str(self, key):values_print_recode_str188,6393
-    def load_vars(self, vars=None, use_labels=True, rec=None, vars_newnames=None):load_vars196,6612
-    def recode(self, data, rec):recode251,8901
-    def rename(self, data, vars, newnames):rename257,9112
-    def __print_vars_found__(self, vars_found, show_value_labels):__print_vars_found__264,9312
-    def __print_values__(self, dic, key, var_label, print_varlabel=True):__print_values__276,9664
-    def __str__(self):__str__291,10225
-    def __toBytes__(self, vars):__toBytes__295,10300
-    def __toStr__(self, vars):__toStr__301,10500
-class read_spss():read_spss308,10706
-    def __init__(self, fn, encoding='utf-8'):__init__318,10974
-    def var_list(self, encoding="utf-8"):var_list333,11670
-    def var_search(self, regexp='', show_value_labels=False, get_output=False,var_search337,11770
-    def var_values(self, varname, print_values=True, get_output=False):var_values371,13088
-    def var_values_freq(self, varname, get_output=True):var_values_freq407,14456
-    def var_values_summary(self, varname):var_values_summary443,15863
-    def var_values_recode_skeleton(self, varname, use='key', quote_key=False):var_values_recode_skeleton450,16119
-    def vars_load(self, varnames=None, use_labels=True, rec=None, varsnames_new=None):vars_load464,16567
-    def recode(self, data, rec):recode517,18825
-    def rename(self, data, vars, newnames):rename523,19044
-    def __print_vars_found__(self, vars_found, show_value_labels):__print_vars_found__530,19244
-    def __print_values__(self, dic, key, var_label, print_varlabel=True):__print_values__542,19596
-    def __str__(self):__str__557,20157
-    def __toBytes__(self, vars):__toBytes__561,20232
-    def __toStr__(self, vars, encoding='utf-8'):__toStr__567,20448
-    def __encode_dict__(self, dict, encoding):__encode_dict__574,20689
-class eDataFrame(pd.DataFrame):eDataFrame587,20999
-    def __init__(self,  *args, **kwargs):__init__588,21031
-    def _constructor(self):_constructor598,21450
-    def case_when(self, varname, replace):case_when604,21646
-    def pivot_longer(self, id_vars, value_vars=None,pivot_longer629,22473
-    def pivot_wider(self, id_vars=None, cols_from=None, values_from=None,pivot_wider637,22826
-    def combine(self, cols, colname=None, sep='_', remove=False):combine655,23532
-    def mutate(self, dict):mutate684,24454
-    def bind_row(self, df):bind_row692,24662
-    def bind_col(self, df, ignore_index=False):bind_col697,24787
-    def separate(self, col, into, regexp, keep=False):separate702,24948
-    def join(self, data, how='left', on=None, left_on=None, right_on=None,join713,25275
-    def __join_keep__(self, res, data, keep_suffix, discard_suffix):__join_keep__745,26556
-    def exchange(self, data, var, match_on=None,exchange768,27524
-    def cut(self, var, ncuts=10, labels=None, varname=None,cut835,30697
-    def get_dummies(self, vars):get_dummies855,31365
-    def reorder(self, var, order):reorder873,31824
-    def insert_row(self, newrow, index):insert_row881,32041
-    def get_outliers(self, var):get_outliers905,32853
-    def summary(self, vars, funs={'N':'count', "Missing":count_missing,summary913,33095
-    def __summary__(self, vars, funs):__summary__951,34667
-    def __summary_group__(self, vars, funs, groups=None, wide_format=None):__summary_group__962,34950
-    def freq(self, vars, condition_on=None):freq1025,37525
-            def compute_stdev(df):compute_stdev1049,38403
-            def compute_freq(df):compute_freq1065,38981
-            def compute_stdev(df):compute_stdev1068,39107
-    def ci_t(self, var, alpha=.95):ci_t1085,39724
-    def ci_norm(self, var, alpha=.95):ci_norm1091,39920
-    def corr_pairwise(self, vars, long_format=True, lower_tri=False):corr_pairwise1096,40074
-    def pearsonr(self, vars, alpha=0.05):pearsonr1111,40598
-    def prop_test(self, var, var_value,prop_test1145,41730
-    def tab(self, vars_row, vars_col, groups=None,tab1223,44992
-    def __tab_groups__(self, vars_row, vars_col, normalize,__tab_groups__1255,46517
-    def tabn(self, vars_row, vars_col, normalize=False, margins=True,tabn1269,47066
-    def tabp(self, vars_row, vars_col, normalize="all", margins=True,tabp1276,47344
-    def __tab__(self, vars_row, vars_col, normalize='all', margins=True,__tab__1283,47622
-    def names(self, regexp=None, print_long=False):names1299,48294
-    def to_org(self, round=4):to_org1314,48723
-    def flatten_columns(self, sep='_'):flatten_columns1324,49024
-        def _remove_empty(column_name):_remove_empty1328,49223
-        def _join(column_name):_join1330,49335
-    def scale(self, vars=None, exclude=None, centralize=True, center='mean',scale1338,49634
-    def centralize(self, vars=None, exclude=None, center='mean'):centralize1359,50536
-    def __rescale__(self, vars=None, exclude=None, centralize=False,__rescale__1379,51393
-    def plot_scatter(self, x, y, **kwargs):plot_scatter1412,52744
-    def plot_line(self, x, y,plot_line1419,53030
-    def plot_polar(self, vars, group=None, func='mean', facet=None, **kws):plot_polar1578,59198
-    def __plot_polar_add_legend__(self, ax, **kws):__plot_polar_add_legend__1679,64193
-    def __plot_polar_add_thresholds__(self, ax, **kws):__plot_polar_add_thresholds__1700,65340
-    def __plot_polar_addlabels__(self, ax, **kws):__plot_polar_addlabels__1720,66297
-    def __plot_polar_facets__(self, tab, group, func, ax, facet, **kws):__plot_polar_facets__1747,67345
-    def __plot_polar_groups__(self, tab, group, func, ax, **kws):__plot_polar_groups__1766,68110
-    def __plot_polar_simple__(self, tab, func, ax, **kws):__plot_polar_simple__1776,68530
-    def __plot_polar__get_tab_main__(self, vars, group, func, facet):__plot_polar__get_tab_main__1795,69172
-    def __plot_polar__get_tab__(self, vars, group, func, facet=None):__plot_polar__get_tab__1812,69994
-    def __plot_polar_vars_group__(self, ax, tab, func, **kws):__plot_polar_vars_group__1851,71376
-    def plot_hist(self, var, group=None, facet=None, ax=None, **kws):plot_hist1879,72634
-    def __plot_hist_bin_labels__(self, ax, **kws):__plot_hist_bin_labels__1915,74243
-    def __plot_hist_main__(self, ax, var, **kws):__plot_hist_main__1937,75135
-    def plot_table(self, ax=None, **kws):plot_table1959,75937
-    def __plot_border__(self, axs, **kws):__plot_border__2001,77584
-    def __create_figure__(self, **kws):__create_figure__2008,77861
-    def __plot_yticks__(self, ax, **kws):__plot_yticks__2019,78323
-    def __plot_grid__(self, ax, **kws):__plot_grid__2033,78953
-class eSlider(Slider):eSlider2048,79528
-    def __init__(self, left, bottom, width, height,__init__2049,79551
-    def _constructor(self):_constructor2064,80170
-    def on_update(self, func):on_update2067,80222
-        def func_extension(func):func_extension2069,80278
-    def slider_marker(self, pos, y, color='white', edgecolor='black', s=100,slider_marker2075,80426
-    def slider(self, markercolor='white', markeredgecolor='black',slider2081,80748
-    def update_slider_marker(self):update_slider_marker2120,82714
-class eTextBox(TextBox):eTextBox2127,82861
-    def __init__(self, left, bottom, width, height, hovercolor="whitesmoke",__init__2128,82886
-    def _constructor(self):_constructor2140,83462
-    def box(self, bottom=True, left=False,box2143,83515
+/home/diogo/Dropbox/CienciasSociais/studies/computing/python/src/dev/pandasci/pandasci/ds.py,11817
+def quantile10(x):quantile1040,1207
+def quantile25(x):quantile2543,1274
+def quantile75(x):quantile7546,1341
+def quantile90(x):quantile9049,1408
+def count_missing(x):count_missing52,1475
+def read_data(**kwargs):read_data55,1537
+def read_csv(**kwargs):read_csv83,2350
+def read_dta(**kwargs):read_dta96,2949
+def read_xls(**kwargs):read_xls100,3039
+def read_ods(**kwargs):read_ods111,3366
+def read_tsv(**kwargs):read_tsv122,3693
+def read_txt(**kwargs):read_txt134,4231
+def reorderLegend(ax=None,order=None,unique=False):reorderLegend145,4741
+def simulate_data(var_groups, n, seed=None):simulate_data157,5427
+    def __simulate_data_discrete__(var_groups, n):__simulate_data_discrete__196,6879
+    def __simulate_data_continuous__(vars, n):__simulate_data_continuous__205,7245
+    def __simulate_data_categorical__(vars, n):__simulate_data_categorical__213,7481
+class spss_data():spss_data239,8379
+    def __init__(self, fn):__init__249,8647
+    def search_var(self, regexp='', show_value_labels=False, get_output=False):search_var256,8876
+    def get_var(self, regexp='', show_value_labels=False):get_var271,9468
+    def list_vars(self, show_value_labels=False):list_vars277,9734
+    def get_values(self, key, print_values=True):get_values281,9809
+    def values_freq(self, var):values_freq303,10594
+    def values_summary(self, var):values_summary316,11193
+    def values_print_recode_str(self, key):values_print_recode_str323,11429
+    def load_vars(self, vars=None, use_labels=True, rec=None, vars_newnames=None):load_vars331,11648
+    def recode(self, data, rec):recode386,13937
+    def rename(self, data, vars, newnames):rename392,14148
+    def __print_vars_found__(self, vars_found, show_value_labels):__print_vars_found__399,14348
+    def __print_values__(self, dic, key, var_label, print_varlabel=True):__print_values__411,14700
+    def __str__(self):__str__426,15261
+    def __toBytes__(self, vars):__toBytes__430,15336
+    def __toStr__(self, vars):__toStr__436,15536
+class read_spss():read_spss443,15742
+    def __init__(self, fn, encoding='utf-8'):__init__453,16010
+    def val_labels(self, vars=None):val_labels468,16657
+    def var_list(self):var_list480,16974
+    def var_search(self, regexp='', show_value_labels=False, get_output=False):var_search484,17061
+    def var_values(self, varname, print_values=True, get_output=False):var_values517,18352
+    def var_values_freq(self, varname, get_output=True):var_values_freq553,19720
+    def var_values_summary(self, varname):var_values_summary589,21133
+    def var_values_recode_skeleton(self, varname, use='key', quote_key=False):var_values_recode_skeleton596,21389
+    def vars_load(self, varnames=None, use_labels=True, rec=None, varsnames_new=None):vars_load611,21887
+    def recode(self, data, rec):recode664,24145
+    def rename(self, data, vars, newnames):rename670,24364
+    def __print_vars_found__(self, vars_found, show_value_labels):__print_vars_found__677,24564
+    def __print_values__(self, dic, key, var_label, print_varlabel=True):__print_values__689,24916
+    def __str__(self):__str__704,25477
+    def __toBytes__(self, vars):__toBytes__708,25552
+    def __toStr__(self, vars):__toStr__714,25768
+    def __encode_dict__(self, dict):__encode_dict__721,25996
+class eDataFrame(pd.DataFrame):eDataFrame732,26256
+    def __init__(self,  *args, **kwargs):__init__733,26288
+    def _constructor(self):_constructor747,26909
+    def __create_var_labels__(self):__create_var_labels__755,27134
+    def set_var_label(self, vars=None):set_var_label762,27311
+    def get_var_label(self, vars=None, regexp=None):get_var_label775,27652
+    def get_var_name(self, labels=None, regexp=None):get_var_name799,28581
+    def use_var_label(self, vars=None):use_var_label825,29571
+    def use_var_name(self, vars=None):use_var_name842,30102
+    def __create_val_labels__(self):__create_val_labels__853,30445
+    def set_val_label(self, vars=None):set_val_label858,30548
+    def get_val_label(self, var=None):get_val_label871,30910
+    def use_val_label(self, var=None):use_val_label889,31482
+    def use_val_value(self, var=None):use_val_value894,31616
+    def case_when(self, varname, replace=None):case_when912,32313
+    def __case_when__(self, varname, replace):__case_when__1004,35223
+    def pivot_longer(self, id_vars, value_vars=None,pivot_longer1028,36057
+    def pivot_wider(self, id_vars=None, cols_from=None, values_from=None,pivot_wider1057,37180
+    def combine(self, cols, colname=None, sep='_', remove=False):combine1096,38632
+    def mutate(self, dict):mutate1125,39554
+    def mutate_rowwise(self, dict):mutate_rowwise1132,39761
+    def bind_row(self, df):bind_row1139,40014
+    def bind_col(self, df, ignore_index=False):bind_col1144,40139
+    def separate(self, col, into, regexp, keep=False):separate1149,40300
+    def join(self, data, how='left', on=None, left_on=None, right_on=None,join1160,40639
+    def __join_keep__(self, res, data, keep_suffix, discard_suffix):__join_keep__1192,41920
+    def exchange(self, data, var, match_on=None,exchange1215,42888
+    def cut(self, var, ncuts=10, labels=None, varname=None,cut1282,46061
+    def get_dummies(self, vars, keep_original=True,get_dummies1310,47194
+    def reorder(self, var, order):reorder1349,48721
+    def insert_row(self, newrow, index):insert_row1357,48938
+    def nest(self, group):nest1378,49613
+    def unnest(self, col, id_vars):unnest1403,50357
+    def recode_skeleton_print(self, var):recode_skeleton_print1450,52046
+    def select(self, vars=None, regex=None):select1459,52294
+    def select_cols(self, names=None, regex=None, positions=None, index=None,select_cols1467,52496
+    def __select_cols_type__(self, type):__select_cols_type__1553,55598
+    def mutate_type(self, col2type=None, from_to=None, **kws):mutate_type1576,56503
+    def select_rows(self, query=None, regex=None, row_numbers=None, index=None,select_rows1626,58560
+    def drop_cols(self, names=None, regex=None, **kws):drop_cols1718,62340
+    def drop_rows(self, query=None, regex=None, row_numbers=None, index=None,drop_rows1742,63077
+    def fill_na(self, value=None, vars=None, **kws):fill_na1766,63958
+    def rename_cols(self, columns=None, regex=None, inplace=False, **kws):rename_cols1796,64951
+    def scale(self, vars=None, exclude=None, centralize=True, center='mean',scale1841,66557
+    def centralize(self, vars=None, exclude=None, center='mean'):centralize1879,68323
+    def __rescale__(self, vars=None, exclude=None, centralize=False,__rescale__1899,69180
+    def groupby(self, group, *args, **kwargs):groupby1932,70516
+    def get_outliers(self, var):get_outliers1940,70765
+    def summary(self, vars=None, funs={'N':'count', "Missing":count_missing,summary1948,71007
+    def __summary__(self, vars, funs):__summary__2042,74991
+    def __summary_group__(self, vars, funs, groups=None, wide_format=None):__summary_group__2053,75274
+    def freq(self, vars=None, condition_on=None):freq2123,78256
+            def compute_stdev(df):compute_stdev2148,79193
+            def compute_freq(df):compute_freq2164,79771
+            def compute_stdev(df):compute_stdev2167,79897
+    def ci_t(self, var, alpha=.95):ci_t2190,80717
+    def ci_norm(self, var, alpha=.95):ci_norm2196,80913
+    def corr_pairwise(self, vars, long_format=True, lower_tri=False):corr_pairwise2201,81067
+    def pearsonr(self, vars, alpha=0.05):pearsonr2216,81591
+    def prop_test(self, var, var_value,prop_test2270,83401
+    def tab(self, row, col, groups=None,tab2348,86663
+    def __tab_groups__(self, vars_row, vars_col, normalize,__tab_groups__2410,89585
+    def tabn(self, vars_row, vars_col, normalize=False, margins=True,tabn2424,90134
+    def tabp(self, vars_row, vars_col, normalize="all", margins=True,tabp2431,90412
+    def __tab__(self, vars_row, vars_col, normalize='all', margins=True,__tab__2438,90690
+    def balance(self, vars, balance_on, include_summary=True,balance2453,91228
+    def names(self, regexp=None, print_long=False):names2534,94261
+    def to_org(self, round=4):to_org2547,94664
+    def flatten_columns(self, sep='_'):flatten_columns2557,94965
+        def _remove_empty(column_name):_remove_empty2561,95164
+        def _join(column_name):_join2563,95276
+    def flatten(self, drop=True):flatten2572,95576
+    def tolatex(self, fn=None, na_rep="", table_env=True,tolatex2579,95779
+    def t(self):t2687,99917
+    def plot(self, type, **kws):plot2700,100249
+    def plot_scatter(self, x, y, **kwargs):plot_scatter2707,100452
+    def plot_line(self, x, y,plot_line2715,100771
+    def plot_polar(self, vars, group=None, func='mean', facet=None, **kws):plot_polar2877,107076
+    def __plot_polar_add_legend__(self, ax, **kws):__plot_polar_add_legend__2978,112071
+    def __plot_polar_add_thresholds__(self, ax, **kws):__plot_polar_add_thresholds__2999,113218
+    def __plot_polar_addlabels__(self, ax, **kws):__plot_polar_addlabels__3019,114175
+    def __plot_polar_facets__(self, tab, group, func, ax, facet, **kws):__plot_polar_facets__3046,115223
+    def __plot_polar_groups__(self, tab, group, func, ax, **kws):__plot_polar_groups__3065,115988
+    def __plot_polar_simple__(self, tab, func, ax, **kws):__plot_polar_simple__3075,116408
+    def __plot_polar__get_tab_main__(self, vars, group, func, facet):__plot_polar__get_tab_main__3094,117050
+    def __plot_polar__get_tab__(self, vars, group, func, facet=None):__plot_polar__get_tab__3111,117872
+    def __plot_polar_vars_group__(self, ax, tab, func, **kws):__plot_polar_vars_group__3150,119254
+    def plot_hist(self, var, groups=None, discrete=False,plot_hist3178,120512
+    def __plot_xlab_wrap__(self, ax,__plot_xlab_wrap__3237,123171
+    def plot_density(self, var, ax=None, **kws):plot_density3254,123870
+    def __plot_hist_bin_labels__(self, ax, **kws):__plot_hist_bin_labels__3276,124796
+    def __plot_hist_main__(self, ax, var, discrete, **kws):__plot_hist_main__3299,125739
+    def plot_table(self, ax=None, **kws):plot_table3339,127139
+    def plot_corr(self, vars=None, sig=False, legend=False, cmap='coolwarm',plot_corr3380,128735
+    def __plot_border__(self, axs, **kws):__plot_border__3433,130779
+    def __create_figure__(self, **kws):__create_figure__3441,131075
+    def __plot_yticks__(self, ax, **kws):__plot_yticks__3452,131537
+    def __plot_grid__(self, ax, **kws):__plot_grid__3467,132185
+class egroupby(pd.core.groupby.DataFrameGroupBy):egroupby3478,132626
+    def __init__(self,  *args, **kwargs):__init__3482,132748
+    def _constructor(self):_constructor3486,132861
+    def mutate(self, dict, flatten=True):mutate3489,132914
+    def scale(self, *args, **kws):scale3496,133078
+    def pivot_longer(self, flatten=True, *args, **kws):pivot_longer3500,133189
+    def freq(self, *args, **kws):freq3507,133398
+class eSlider(Slider):eSlider3526,133893
+    def __init__(self, left, bottom, width, height,__init__3527,133916
+    def _constructor(self):_constructor3542,134535
+    def on_update(self, func):on_update3545,134587
+        def func_extension(func):func_extension3547,134643
+    def slider_marker(self, pos, y, color='white', edgecolor='black', s=100,slider_marker3553,134791
+    def slider(self, markercolor='white', markeredgecolor='black',slider3559,135113
+    def update_slider_marker(self):update_slider_marker3598,137079
+class eTextBox(TextBox):eTextBox3605,137226
+    def __init__(self, left, bottom, width, height, hovercolor="whitesmoke",__init__3606,137251
+    def _constructor(self):_constructor3618,137827
+    def box(self, bottom=True, left=False,box3621,137880
+
+/home/diogo/Dropbox/CienciasSociais/studies/computing/python/src/dev/pandasci/pandasci/data/survey.py,36
+def load_survey():load_survey4,42
 
 /home/diogo/Dropbox/CienciasSociais/studies/computing/python/src/dev/pandasci/pandasci/__init__.py,0
 
-/home/diogo/Dropbox/CienciasSociais/studies/computing/python/src/dev/pandasci/pandasci/models.py,6829
-stats = importr('stats')stats21,601
-base = importr('base')base22,626
-jtools = importr('jtools')jtools23,649
-broom = importr('broom')broom24,676
-broomm = importr('broom.mixed')broomm25,701
-ggplot=importr("ggplot2")ggplot26,733
-scales=importr("scales")scales27,759
-sjp=importr("sjPlot")sjp28,784
-graphics=importr("graphics")graphics29,806
-grd=importr("grDevices")grd30,835
-class regression():regression34,892
-    def __init__(self, formula, data, family, na='omit',__init__35,912
-    def get_info(self, model=None):get_info58,1934
-    def print_omitted(self, summary=True, get=False):print_omitted65,2138
-    def summary_default(self, model=None):summary_default84,2722
-    def summary_tidy(self, model=None, join=True, get=True):summary_tidy91,2985
-    def plot(self,plot109,3571
-    def dev_off(self):dev_off174,5338
-    def __regression__(self, formula, family, na, engine, *args, **kws):__regression__180,5520
-    def __dispatcher__(self, formula, family, na, *args, **kws):__dispatcher__188,5830
-    def __dispatcherr__(self, formula, family, na, *args, **kws):__dispatcherr__197,6224
-    def __repr__(self):__repr__206,6622
-    def __get_variables__(self, formula):__get_variables__213,6800
-    def __get_data__(self, formula, na):__get_data__220,7014
-    def __get_info__(self, model):__get_info__229,7337
-    def __collect_summary__(self, fit, formula, family, function,__collect_summary__237,7587
-    def __get_fit_list__(self, models):__get_fit_list__258,8308
-    def __run_gaussian__(self, *args, **kws):__run_gaussian__273,8812
-    def __run_multinomial__(self, *args, **kws):__run_multinomial__276,8916
-    def __run_binomial__(self, *args, **kws):__run_binomial__279,9026
-    def __get_summary1__(self, fit):__get_summary1__309,10492
-    def  __get_summary2__(self, fit):__get_summary2__315,10683
-    def  __get_summary3__(self, mod, fit, digits=4):__get_summary3__322,10921
-    def table(self, model_names='label', ci=True,table354,12327
-    def pull(self, model_index=None):pull429,15255
-    def prediction(self, newdata, model_index=1):prediction439,15595
-    def __plot_coef_python__(self, model_index=1, sort=True, title=None, labels=None):__plot_coef_python__467,16451
-    def __plot_pred_python__(self, x, newdata=None, model_index=1,__plot_pred_python__502,17908
-    def __run_binomialr__(self, formula, family, na, *args, **kws):__run_binomialr__550,19744
-    def __reprr__(self):__reprr__570,20650
-    def __reprr_round__(self, tab, digits, model_names):__reprr_round__591,21504
-    def __plot_coefr_get_coef_names__(self, coefs):__plot_coefr_get_coef_names__613,22432
-    def __plot_coefr_get_model_names__(self, model_names):__plot_coefr_get_model_names__622,22699
-    def __plot_coefr__(self, args):__plot_coefr__632,23054
-    def __plot_predr__(self, args):__plot_predr__665,24249
-    def __plotr_legend__(self, g, args):__plotr_legend__716,26333
-    def __plotr_theme__(self, g, args):__plotr_theme__743,27684
-    def __plotr_axis_labels__(self, g, args):__plotr_axis_labels__748,27812
-    def __plotr_grid__(self, g, args):__plotr_grid__756,28138
-    def __plotr_strip__(self, g, args):__plotr_strip__768,28653
-    def __plotr_border__(self, g, args):__plotr_border__779,29083
-    def __plotr_save__(self, g, args):__plotr_save__791,29573
-class regression_old():regression_old809,30162
-    def __init__(self, formula, data, family, na='omit',__init__810,30186
-    def get_info(self, model=None):get_info833,31208
-    def print_omitted(self, summary=True, get=False):print_omitted840,31412
-    def summary_default(self, model=None):summary_default859,31996
-    def summary_tidy(self, model=None, join=True, get=True):summary_tidy866,32259
-    def plot_coef(self,plot_coef884,32845
-    def plot_pred(self,plot_pred920,33923
-    def __regression__(self, formula, family, na, engine, *args, **kws):__regression__955,35047
-    def __dispatcher__(self, formula, family, na, *args, **kws):__dispatcher__963,35357
-    def __dispatcherr__(self, formula, family, na, *args, **kws):__dispatcherr__972,35751
-    def __repr__(self):__repr__981,36149
-    def __get_variables__(self, formula):__get_variables__988,36327
-    def __get_data__(self, formula, na):__get_data__995,36541
-    def __get_info__(self, model):__get_info__1004,36864
-    def __collect_summary__(self, fit, formula, family, function,__collect_summary__1012,37114
-    def __run_gaussian__(self, *args, **kws):__run_gaussian__1035,37974
-    def __run_multinomial__(self, *args, **kws):__run_multinomial__1038,38078
-    def __run_binomial__(self, *args, **kws):__run_binomial__1041,38188
-    def __get_summary1__(self, fit):__get_summary1__1071,39654
-    def  __get_summary2__(self, fit):__get_summary2__1077,39845
-    def  __get_summary3__(self, mod, fit, digits=4):__get_summary3__1084,40083
-    def table(self, model_names='label', ci=True,table1116,41489
-    def pull(self, model_index=None):pull1191,44417
-    def prediction(self, newdata, model_index=1):prediction1201,44757
-    def __plot_coef_python__(self, model_index=1, sort=True, title=None, labels=None):__plot_coef_python__1229,45613
-    def __plot_pred_python__(self, x, newdata=None, model_index=1,__plot_pred_python__1264,47070
-    def __run_binomialr__(self, formula, family, na, *args, **kws):__run_binomialr__1312,48906
-    def __reprr__(self):__reprr__1332,49812
-    def __reprr_round__(self, tab, digits, model_names):__reprr_round__1353,50666
-    def __plot_coefr_get_coef_names__(self, coefs):__plot_coefr_get_coef_names__1375,51594
-    def __plot_coefr_get_model_names__(self, model_names):__plot_coefr_get_model_names__1384,51861
-    def __plot_coefr__(self, args):__plot_coefr__1394,52216
-    def __plot_predr__(self, args):__plot_predr__1468,55212
-class regr():regr1566,59794
-    def __init__(self, data,  *args, **kws):__init__1567,59808
-    def __run_regresion_r__(self, data, *args, **kws):__run_regresion_r__1605,61672
-    def __run_lm_r__(self, *args, **kws):__run_lm_r__1622,62313
-    def plot_coef(self, *args, **kws):plot_coef1635,62769
-    def summary(self,summary1643,62989
-    def __repr__(self):__repr__1703,65385
-    def __collect_models__(self):__collect_models__1709,65521
-class pca():pca1718,65709
-    def __init__(self, data, *args, **kws):__init__1719,65722
-    def plot(self, *args, **kws):plot1773,67913
-    def plot_eigenvalue(self, ax, *args, **kws):plot_eigenvalue1787,68416
-    def plot_propvar(self, ax, *args, **kws):plot_propvar1797,68835
-    def plot_asthetics(self, ax, *args, **kws):plot_asthetics1809,69352
-    def plot_corr(self, ax, *args, **kws):plot_corr1818,69720
-    def plot_scores(self, ax, *args, **kws):plot_scores1852,71105
+/home/diogo/Dropbox/CienciasSociais/studies/computing/python/src/dev/pandasci/pandasci/models.py,2836
+class power():power18,452
+    def __init__(self, es, alpha=0.05, power=0.8, two_tail=True,__init__19,467
+    def __2prop__(self, es, alpha, power, two_tail, type, ratio):__2prop__56,1934
+    def plot(self):plot90,3235
+    def __plot_2prop__(self):__plot_2prop__95,3344
+    def __str__(self):__str__182,7120
+    def __repr__(self):__repr__186,7201
+class regression():regression193,7318
+    def __init__(self, formula, data, family, na='omit',__init__194,7338
+    def get_info(self, model=None):get_info217,8360
+    def print_omitted(self, summary=True, get=False):print_omitted224,8564
+    def summary_default(self, model=None):summary_default243,9148
+    def summary_tidy(self, model=None, join=True, get=True):summary_tidy250,9411
+    def plot(self,plot268,9997
+    def dev_off(self):dev_off333,11764
+    def __regression__(self, formula, family, na, engine, *args, **kws):__regression__339,11946
+    def __dispatcher__(self, formula, family, na, *args, **kws):__dispatcher__347,12256
+    def __dispatcherr__(self, formula, family, na, *args, **kws):__dispatcherr__356,12650
+    def __repr__(self):__repr__365,13048
+    def __get_variables__(self, formula):__get_variables__372,13226
+    def __get_data__(self, formula, na):__get_data__379,13440
+    def __get_info__(self, model):__get_info__388,13763
+    def __collect_summary__(self, fit, formula, family, function,__collect_summary__396,14013
+    def __get_fit_list__(self, models):__get_fit_list__417,14734
+    def __run_gaussian__(self, *args, **kws):__run_gaussian__432,15237
+    def __run_multinomial__(self, *args, **kws):__run_multinomial__435,15341
+    def __run_binomial__(self, *args, **kws):__run_binomial__438,15451
+    def __get_summary1__(self, fit):__get_summary1__468,16917
+    def  __get_summary2__(self, fit):__get_summary2__474,17108
+    def  __get_summary3__(self, mod, fit, digits=4):__get_summary3__481,17346
+    def table(self, model_names='label', ci=True,table513,18752
+    def pull(self, model_index=None):pull588,21680
+    def prediction(self, newdata, model_index=1):prediction598,22020
+    def __plot_coef_python__(self, model_index=1, sort=True, title=None, labels=None):__plot_coef_python__626,22876
+    def __plot_pred_python__(self, x, newdata=None, model_index=1,__plot_pred_python__661,24333
+class pca():pca706,26033
+    def __init__(self, data, *args, **kws):__init__707,26046
+    def plot(self, *args, **kws):plot764,28476
+    def plot_eigenvalue(self, ax, *args, **kws):plot_eigenvalue793,29373
+    def plot_propvar(self, ax, *args, **kws):plot_propvar803,29792
+    def plot_asthetics(self, ax, *args, **kws):plot_asthetics815,30309
+    def plot_corr(self, ax, *args, **kws):plot_corr824,30677
+    def plot_scores(self, ax, *args, **kws):plot_scores858,32062

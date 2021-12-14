@@ -6,11 +6,188 @@ import seaborn as sns
 import prince # for PCA
 from statsmodels.formula.api import glm as glm
 from statsmodels.formula.api import logit as logit
+from statsmodels.stats import proportion as pwr2prop
 from statsmodels.api import families as family
 import warnings
 import itertools
 from statsmodels.iolib.summary2 import summary_col
 
+
+# {{{ Power and Sample size }}}
+
+class power():
+    def __init__(self, es, alpha=0.05, power=0.8, two_tail=True,
+                 ratio=1,
+                 type=None):
+        '''
+        Compute the sample size
+
+        Input 
+        -----
+        es       : effect size
+        alpha    : significance level
+        power    : power of the test
+        two_tail : boolean. If True, use two-tail test
+        ratio    : Sample size ratio, nobs2 = ratio * nobs1. Use 1 if the
+                   sample size is the same in the two groups
+        type     : sting with the type of test. Options are:
+
+                   2prop :  used when you have two groups and
+                            you want to know if the proportions of each group are
+                            different from one another.
+                            Examples: 
+                            -------
+                            a. Is the proportion of men in favor of gender equality
+                               different from the proportion of woman in favor of
+                               gender equality
+                            b. Is proportion of cases with outcome "A" different 
+                               different in the treatment and control group?
+
+        '''
+        self.es=es
+        self.alpha=alpha
+        self.power=power
+        self.ratio=ratio
+        self.two_tail=two_tail
+        self.type=type
+        if type=='2prop':
+            self.data = self.__2prop__(es, alpha, power, two_tail, type, ratio)
+
+    def __2prop__(self, es, alpha, power, two_tail, type, ratio):
+        if isinstance(es, float):
+            es = [es]
+        # 
+        prop1s = np.linspace(0, 1, 21)
+        res = eDataFrame()
+        # 
+        if two_tail:
+            tail='two-sided'
+        for esi in es:
+            prop2s = prop1s + esi
+            for prop1, prop2 in zip(prop1s, prop2s):
+                if 0 < prop2 <1:
+                    nobs1 = pwr2prop.samplesize_proportions_2indep_onetail(
+                        diff=esi,
+                        alpha=alpha,
+                        prop2=prop2,
+                        power=power,
+                        ratio=ratio,
+                        alternative=tail
+                    )
+                    tmp = eDataFrame({
+                        'prop1'              : [prop1],
+                        'prop2'              : [prop2],
+                        'es'                 : [esi],
+                        'sample_size_group1' : [nobs1],
+                        'sample_size_group2' : [nobs1*ratio],
+                        'pwr'                : [power],
+                        'alpha'              : [alpha],
+                        'two-sided'          : [tail],
+                    })
+                    res = res.bind_row(tmp)
+        return res
+
+    def plot(self):
+        if self.type=='2prop':
+            ax = self.__plot_2prop__()
+        return ax
+
+    def __plot_2prop__(self):
+        tab = (
+            self
+            .data
+            .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
+                                                    'sample_size_group2'],
+                          var_name='Group', value_name='Sample size', ignore_index=True)
+            .replace({'Group':{'sample_size_group1':"Reference (e.g. control group)",
+                               'sample_size_group2':'Interest (e.g. treatment group)'}} ,
+                     regex=False, inplace=False)
+            .rename(columns={'es':'Effect size'}, inplace=False)
+        )
+        # 
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=[10, 6], tight_layout=True)
+        sns.scatterplot(x='prop2', y='Sample size', data=tab,
+                        style='Group', hue='Effect size', palette='RdBu',s=70,
+                        ax=ax)
+        sns.lineplot(x='prop2', y='Sample size', data=tab,
+                        style='Group', hue='Effect size', palette='RdBu',
+                        ax=ax, alpha=.3, legend=False)
+        # 
+        ax.set_xlabel("Proportion of 'positive' outcome cases (Y=1) "+\
+                      'in the group of interest')
+        ax.set_ylabel('Sample size required do detect the effect size')
+        # 
+        # grid
+        ax.grid(b=None, which='major', axis='both', linestyle='-', alpha=.3)
+        ax.set_axisbelow(True) # to put the grid below the plot
+        # legend
+        handles, labels = ax.get_legend_handles_labels()
+        leg = ax.legend(loc='upper right')
+        leg._legend_box.align = "left"
+        # -------
+        # Splines (axes lines)
+        # -------
+        ax.spines['bottom'].set_visible(True)
+        ax.spines['left'].set_visible(True)
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        title = "Sample size calculation"
+        subtitle = ("Info:  "+
+                    f"$\\alpha$: {self.alpha}; "+
+                    f"Power ($\\beta$): {self.power}; "+
+                    f"Test : {self.type}; "+
+                    f"Two-sided : {self.two_tail}; "+
+                    f"Ratio between sample sizes in each group : {self.ratio}"
+                    )
+        # -----
+        # Title
+        # -----
+        plt.subplots_adjust(top=.78)
+        xcoord=-.07
+        ycoord=1.13
+        yoffset=.07
+        ax.annotate(title, xy=(xcoord, ycoord),
+                   xytext=(xcoord, ycoord), xycoords='axes fraction',
+                           size=15, alpha=.6)
+        ax.annotate(subtitle, xy=(xcoord, ycoord-yoffset),
+                   xytext=(xcoord, ycoord-yoffset), xycoords='axes fraction',
+                           size=11, alpha=.6)
+        # maximum value
+        max_sample_sizes = (
+            tab
+            .groupby(['Effect size', 'Group'])
+            .apply(lambda x: x.nlargest(1, columns=['Sample size']))
+        )
+        for idx, row in max_sample_sizes.iterrows():
+            x = row['prop2']
+            y = row['Sample size']
+            group = row['Group']
+            # 
+            va = 'bottom' if 'Reference' in group else 'top'
+            txt = f"Max: {int(row['Sample size']):,}\n({group})"
+            txt = f'\n{txt}' if va == 'top' else f"{txt}\n"
+            color='red' if va == 'top' else 'green'
+            # 
+            ax.scatter(x, y, s=60, color=color)
+            ax.text(x, y, s=txt,
+                    ha='center', va=va, ma='center',
+                    fontdict=dict(weight='normal', style='italic',
+                                  color=color, fontsize=10, alpha=1))
+        return ax
+        
+
+    # =====================================================
+    # default methods
+    # =====================================================
+    def __str__(self):
+        print(self.data, flush=True)
+        return None
+
+    def __repr__(self):
+        print(self.data, flush=True)
+        return ''
+
+# }}}
 # {{{ regression models   }}}
 
 class regression():
@@ -523,8 +700,6 @@ class regression():
 
         return ax
 
-
-
 # }}}
 # {{{ PCA                 }}}
 
@@ -578,12 +753,25 @@ class pca():
             f"{self.scores.shape[1]}"
             for i, mult in enumerate(invert):
                 self.scores[f"Comp{i+1}"]=mult*self.scores[f"Comp{i+1}"] 
-                
+        self.scores = eDataFrame(self.scores)
+        self.correlations = self.fit.column_correlations(self.data)
+        self.correlations.columns = [f"Comp{i+1}" for i in range(self.scores.ncol)]
+        self.correlations = eDataFrame(self.correlations)
 
     # =====================================================
     # plots
     # =====================================================
     def plot(self, *args, **kws):
+        '''
+        Plot PCA results
+
+        Input
+           fn filename with path to save the plot. If omitted, plot will be 
+              displayed but not saved
+        
+        Output
+           A plot with PCA summary results. If
+        '''
         assert self.fit.n_components>1, ("You need at least 2 components to "+\
                                          "generate the plots")
         fig, ax = plt.subplots(nrows=2, ncols=2, figsize=[10, 6], tight_layout=True)
@@ -595,6 +783,11 @@ class pca():
         self.plot_corr(axc, **kws)
         axc=ax[1][1]
         self.plot_scores(axc, **kws)
+        # saving
+        fn = kws.get("fn", None)
+        if fn:
+            plt.savefig(fn)
+            print(f'File {fn} saved!', flush=True)
     
 
     def plot_eigenvalue(self, ax, *args, **kws):
@@ -705,5 +898,6 @@ class pca():
         ax.set_ylabel(f'Component {y+1}\n(Captures {yperc}% of variance)')
         ax.set_title("")
         self.plot_asthetics(ax)
+
 
 # }}}

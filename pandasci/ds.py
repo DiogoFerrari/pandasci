@@ -1,18 +1,26 @@
 import pandas as pd
 import numpy as np
 from scipy import stats
+import scipy as sp
 import savReaderWriter as spss
 import seaborn as sns
-import re
-import os
-import inspect
+import re, os, textwrap, inspect
 # dply-like operations
 import itertools as it
-from plydata.expressions import case_when
+from plydata.expressions import case_when as case_when_ply
 from plydata import define
 from datetime import datetime
+import xlsxwriter
+import openpyxl as pxl
+from numpy import pi as pi
+import textwrap, xlrd, warnings
 # 
 from scipy.stats import norm as dnorm
+from numpy.random import choice as rsample
+from numpy.random import normal as rnorm
+from numpy.random import uniform as runif
+from numpy.random import seed as set_seed
+# 
 from scipy.stats import t as tdist
 from statsmodels.stats.proportion import proportion_effectsize as prop_esize
 from statsmodels.stats.proportion import proportions_ztest as prop_ztest
@@ -23,31 +31,33 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.widgets import TextBox
 import matplotlib.patheffects as pe
-import textwrap 
-from numpy import pi as pi
-import xlrd
+from matplotlib.transforms import Affine2D
+from matplotlib.lines import Line2D
+import matplotlib.colors as mcolors
 import matplotlib.ticker as mticker # to avoid warning about tick location
-import warnings
+# 
+# 
+from datar.tibble import tibble
 
 # {{{ functions }}}
 
 def quantile10(x):
-   res = np.quantile(x, q=.10) 
-   return res
+    res = np.quantile(x, q=.10) 
+    return res
 def quantile25(x):
-   res = np.quantile(x, q=.25) 
-   return res
+    res = np.quantile(x, q=.25) 
+    return res
 def quantile75(x):
-   res = np.quantile(x, q=.75) 
-   return res
+    res = np.quantile(x, q=.75) 
+    return res
 def quantile90(x):
-   res = np.quantile(x, q=.90) 
-   return res
+    res = np.quantile(x, q=.90) 
+    return res
 def count_missing(x):
     res = x.isna().sum()
     return res
-
 def read_data(**kwargs):
+    print('Loading data...', flush=True)
     fn=kwargs.get('fn')
     assert fn, "fn (filepath) must be provided."
     fn_type=os.path.splitext(fn)[1]
@@ -63,23 +73,22 @@ def read_data(**kwargs):
         return read_spss(**kwargs)
     # 
     elif (fn_type=='.xls' or fn_type=='.xlsx' or
+          fn_type=='.ods' or fn_type=='.ODS' or
           fn_type=='.XLS' or fn_type=='.XLSX'):
         return read_xls(**kwargs)
+    elif fn_type=='.tsv':
+        return read_tsv(**kwargs)
+    elif fn_type=='.txt':
+        return read_txt(**kwargs)
     # 
     else:
         print(f"No reader for file type {fn_type}")
         return None
         
-
 def read_csv(**kwargs):
-    df = pd.read_csv(filepath_or_buffer=kwargs.get('fn'),
-                     sep=kwargs.get('sep', ';'),
-                     index_col=kwargs.get('index_col'),
-                     decimal=kwargs.get('decimal', '.'),
-                     skiprows=kwargs.get('skiprows', None),
-                     nrows=kwargs.get('nrows', None),
-                     encoding=kwargs.get('encoding', 'utf-8')
-                     )
+    fn=kwargs.get('fn')
+    kwargs.pop('fn')
+    df = pd.read_csv(filepath_or_buffer=fn, **kwargs)
     return eDataFrame(df)
         
 def read_dta(**kwargs):
@@ -90,14 +99,56 @@ def read_xls(**kwargs):
     fn=kwargs.get('fn'); kwargs.pop('fn')
     df = eDataFrame(pd.read_excel(io=fn, **kwargs))
     # 
-    print(f"\nFunction arguments:\n")
-    print(inspect.signature(pd.read_excel))
-    print(f"\nFor details, run help(pd.read_excel)\n")
-    print(f"Data set loaded!")
+    # print(f"\nFunction arguments:\n")
+    # print(inspect.signature(pd.read_excel))
+    # print(f"\nFor details, run help(pd.read_excel)\n")
+    # print(f"Data set loaded!")
     # 
     return df
     
+def read_ods(**kwargs):
+    fn=kwargs.get('fn'); kwargs.pop('fn')
+    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
+    # 
+    # print(f"\nFunction arguments:\n")
+    # print(inspect.signature(pd.read_excel))
+    # print(f"\nFor details, run help(pd.read_excel)\n")
+    # print(f"Data set loaded!")
+    # 
+    return df
     
+def read_tsv(**kwargs):
+    fn=kwargs.get('fn')
+    sep=kwargs.get('sep', '\t')
+    kwargs.pop('fn')
+    if 'sep' in list(kwargs.keys()):
+        kwargs.pop('sep')
+    df = pd.read_csv(filepath_or_buffer=fn, sep=sep, **kwargs)
+    # df = pd.read_csv(filepath_or_buffer=kwargs.get('fn'),
+    #                  sep=kwargs.get('sep', '\t'),
+    #                  index_col=kwargs.get('index_col'),
+    #                  decimal=kwargs.get('decimal', '.'),
+    #                  skiprows=kwargs.get('skiprows', None),
+    #                  nrows=kwargs.get('nrows', None),
+    #                  encoding=kwargs.get('encoding', 'utf-8'),
+    #                  parse_dates=kwargs.get('parse_dates', None),
+    #                  )
+    return eDataFrame(df)
+
+def read_txt(**kwargs):
+    fn=kwargs.get('fn')
+    kwargs.pop('fn')
+    df = pd.read_table(filepath_or_buffer=fn, **kwargs)
+    # df = pd.read_table(filepath_or_buffer=fn,
+    #                    names=kwargs.get('names', None),
+    #                    decimal=kwargs.get('decimal', '.'),
+    #                    skiprows=kwargs.get('skiprows', None),
+    #                    nrows=kwargs.get('nrows', None),
+    #                    encoding=kwargs.get('encoding', 'utf-8'),
+    #                    parse_dates=kwargs.get('parse_dates', None),
+    #                    )
+    return eDataFrame(df)
+        
 def reorderLegend(ax=None,order=None,unique=False):
     if ax is None: ax=plt.gca()
     handles, labels = ax.get_legend_handles_labels()
@@ -107,6 +158,83 @@ def reorderLegend(ax=None,order=None,unique=False):
         labels, handles = zip(*sorted(zip(labels, handles), key=lambda t,keys=keys: keys.get(t[0],np.inf)))
     if unique:  labels, handles= zip(*unique_everseen(zip(labels,handles), key = labels)) # Keep only the first of each handle
     return(handles, labels)
+
+# Simulate data 
+# -------------
+def simulate_data(var_groups, n, seed=None):
+    '''
+    Generate a simulated data set
+
+    Input 
+    -----
+    var_groups  : a dictionaty with one or more of the following key-value
+                  pairs:
+                  {"discrete": [
+                                {'vars': ['varname1', 'varname2'...],
+                                 'min': <integer with minimum value>,
+                                 'min': <integer with maximum value>},
+                                {'vars': ['another varname1', ...],
+                                 'min': <integer with minimum value>,
+                                 'min': <integer with maximum value>},
+                                 ...
+                                ],
+                    'continuous' : ['cont. var 1', 'cont. var 2', ...],
+                    'categorical': {
+                                    'cat. var 1': ['cat 1', 'cat2', ...],
+                                    'cat. var 2': ['cat 1', 'cat2', ...],
+                                   ...}
+    n           : sample size
+    seed        : to set the seed. If None, it won't set any seed
+
+
+    Output 
+    ------
+    eDataFrame with simulated data
+
+
+    Details
+    -------
+    Continuous variables will use a normal distribution with mean zero
+    and standard deviation is a randomly selected value between 1 and 2.
+    Discrete and categorical variable will sample values with 
+    equal probability.
+
+    '''
+    def __simulate_data_discrete__(var_groups, n):
+        res = {}
+        for vars_group in var_groups:
+            for var in vars_group['vars']:
+                print(f'Generatig data for {var}...', flush=True)
+                res[var] = rsample(range(vars_group['min'],
+                                         vars_group['max']+1), size=n)
+        return res
+
+    def __simulate_data_continuous__(vars, n):
+        res = {}
+        for var in vars:
+            print(f'Generatig data for {var} ...', flush=True)
+            res[var] = rnorm(size=n, loc=0, scale=runif(1, 2))
+        return res
+
+
+    def __simulate_data_categorical__(vars, n):
+        res = {}
+        for var, cats in vars.items():
+            print(f'Generatig data for {var} ...', flush=True)
+            res[var] = rsample(cats, size=n)
+        return res
+    res={}
+    if seed:
+        set_seed(seed)
+    for type, info in var_groups.items():
+        if type=='discrete':
+            res |= __simulate_data_discrete__(info, n)
+        elif type=='continuous':
+            res |= __simulate_data_continuous__(info, n)
+        if type=='categorical':
+            res |= __simulate_data_categorical__(info, n)
+    res = eDataFrame(res).mutate_type(col2type=None, from_to={"object":'char'})
+    return res
 
 # }}}
 # =====================================================
@@ -788,7 +916,99 @@ class eDataFrame(pd.DataFrame):
     # =====================================================
     # Data wrangling
     # =====================================================
-    def case_when(self, varname, replace):
+    def case_when(self, varname, replace=None):
+        '''
+        Recode variable based on matching row values
+
+        Input
+        -----
+           varname a dict or a string. If a string, the string will be the
+                   name of the new variable in the DataFrame. CAUTION: It will 
+                   overwrite an existing variable if the name already exists.
+                   The replace argument is used when varname is a string.
+                   In that case, replace must be a dictionary with the form:
+                  
+                    {"(condition A)": "'<value>'"}
+        
+                  or 
+
+                   {"(cond. A) <logical operator> (cond. B)...": "'<value>'"}
+        
+                  The rows that satisfies the conditions will take the value
+                  specified in "'<value>'". For numeric, use "<value>".
+
+                  If varname is a dict, argument replace is not used, and 
+                  varname must take the form
+
+                    {"<new_varname>" : "(condition A)": "'<value>'"}
+        
+                  Cautionary note above applies in this case.
+    
+                  See examples below
+        
+           Output
+           -------
+              eDataFrame with the a new variable
+
+           Example
+           -------
+
+           df = ds.eDataFrame({"a": ['a', 'b', 'a', 'c'],
+                                'b': [1,2,3,4]})
+
+           # Using varname as string
+           (
+               dft
+               .case_when('a_new', {
+                   f"(a=='b') ": f"'B'",
+                   f"(a!='b') ": f"'not B'"})
+               .case_when('b_new', {
+                   f"(b<=3) ": f"'Low'",
+                   f"(b>3) ": f"'High'"})
+           )
+
+
+           # Using varname as a dict
+           (
+               dft
+               .case_when({
+                   'a_new' :{f"(a=='b') ": f"'B'",
+                             f"(a!='b') ": f"'not B'"},
+                   'b_new': {f"(b<=3) ": f"'Low'",
+                             f"(b>3) ": f"'High'",}
+               })
+           )
+
+           # CAUTION: if the var exists, it will overwrite it
+           # Using varname as a string
+           (
+               dft
+               .case_when(
+                   'a' , {f"(a=='b') ": f"'B'",
+                          f"(a!='b') ": f"'not B'"})
+           )
+
+            # Using varname as a dict
+            (
+                dft
+                .case_when({
+                    'a' :{f"(a=='b') ": f"'B'",
+                          f"(a!='b') ": f"'not B'"}
+                    })
+            )
+
+
+        '''
+        if isinstance(varname, dict):
+            res = self
+            for var, replace in varname.items():
+                res = res.__case_when__(var, replace)
+        if isinstance(varname, str):
+            res = self.__case_when__(varname, replace)
+        return eDataFrame(res)
+                
+
+    def __case_when__(self, varname, replace):
         if varname in self.columns:
             varname_exists = True
             col_names = self.columns
@@ -797,7 +1017,7 @@ class eDataFrame(pd.DataFrame):
         # replace using casewhen
         res = (
             self >>
-            define(___newvar_name_placeholder___=case_when(replace))
+            define(___newvar_name_placeholder___=case_when_ply(replace))
         )
         # remove old var if it existed
         if varname_exists:
@@ -896,32 +1116,69 @@ class eDataFrame(pd.DataFrame):
         if not colname:
             colname = f"{sep}".join(cols)
         res = (self
-               [cols]
+               .select_cols(names=cols)
                .fillna("")
                .astype(str)
                .agg(f"{sep}".join, axis=1)
                )
-        res = eDataFrame(res, columns=[colname])
-        res = pd.concat([self, res], axis=1)
+        res = eDataFrame(res)
+        res.columns=[colname]
+        res = self.bind_col(res, ignore_index=False)
         if remove:
-            res.drop(cols, axis=1, inplace=True)
+            res=res.drop_cols(names=cols)
         res = res.loc[:, ~res.columns.duplicated(keep='last')]
         return res
         
 
-    def mutate(self, dict):
+    def mutate(self, dict=None, var_to_wrap=None, wrap=None):
         res = self
-        for k, v in dict.items():
-            res = res.assign(**{k: v})
-            res = res.loc[:, ~res.columns.duplicated(keep='last')]
-        return res
+        if dict:
+            for k, v in dict.items():
+                res = res.assign(**{k: v})
+                res = res.loc[:, ~res.columns.duplicated(keep='last')]
+        if var_to_wrap and wrap:
+            res=res.__wrap_var__(var=var_to_wrap, wrap=wrap)
+        return eDataFrame(res)
 
     def mutate_rowwise(self, dict):
         res = self
         for k, v in dict.items():
             res = res.assign(**{k:lambda x: x.apply(v, axis=1)})
             res = res.loc[:, ~res.columns.duplicated(keep='last')]
-        return res
+        return eDataFrame(res)
+
+    def mutate_categorical(self, var, cats=None, ordered=True, wrap=None):
+        '''
+        Change format of string or object to categorical
+
+        Input
+        -----
+        var  string with variable name to set as categorical type
+        cats a list with the categories. It None unique variable valies will
+             be used and they will be sorted if ordered=True
+        ordered boolean, if True it will order the values respecting the
+                order provided in 'cats', in increaseing order. If cats=None
+                and ordered=True, it sorts the unique values of 'var' first, 
+                if it is possible. and use as the categories,
+        wrap either None or an integer. If an integer, return category
+             labels with string wrapped
+
+        Output
+        ------
+        eDataFrame with categorical variable
+
+        '''
+        self = (
+            self
+            .mutate({var: lambda x:
+                     pd.Categorical(x[var],
+                                    categories=cats,
+                                    ordered=ordered)})
+        )
+        if wrap:
+            self=self.__wrap_var__(var, wrap=wrap)
+        return eDataFrame(self)
+        
 
     def bind_row(self, df):
         res =  pd.concat([self, df], axis=0, ignore_index=True)
@@ -941,7 +1198,7 @@ class eDataFrame(pd.DataFrame):
         res = self.bind_col(res, ignore_index=False)
         if not keep:
             res = res.drop([col], axis=1)
-        return res
+        return eDataFrame(res)
 
 
     def join(self, data, how='left', on=None, left_on=None, right_on=None,
@@ -1067,11 +1324,16 @@ class eDataFrame(pd.DataFrame):
 
 
     def cut(self, var, ncuts=10, labels=None, varname=None,
-            robust=False):
+            robust=False, overwrite=True):
         '''
         Cut a numerical variable into categories
 
         Input
+           var    string with the name of the variable
+           ncuts  number of categories computed based on quantiles
+           labels list with the labels of the categories
+           varname string with the the name of the new variable
+           overwrite boolean, if True and variable already exists, overwrite it
            robust Boolean, if True, it computes the cut limits after
                    excluding the outliers
         '''
@@ -1082,25 +1344,49 @@ class eDataFrame(pd.DataFrame):
             idx = res.get_outliers(var).index
             res = res.loc[idx,:]
         q = np.linspace(0, 1, ncuts+1)
+        if overwrite:
+            if varname in self.columns:
+                self = self.drop([varname], axis=1)
         res[varname] = pd.qcut(res[var], q, labels=labels)
         res=self.merge(res, how='left', on=[var])
-        return res
+        return eDataFrame(res)
 
-    def get_dummies(self, vars):
+    def get_dummies(self, vars, keep_original=True,
+                    prefix=False, prefix_sep=None, drop_first=False):
         '''
         Return dummy version of categorical variables
 
         Input:
-           vars a list of variable names in the data frame to convert to dummies
+           vars : a list of variable names in the data frame to convert to dummies
+           keep_original : boolean. If True, keep the original categorical 
+                           variable
+           prefix : boolean. If True, use the name of the original variable
+                    as prefix
+           prefix_sep : string to use as separator when prefix is used
+           drop_first : boolean. If True, drop the first category to use as
+                        reference
 
         Output:
             a data frame with columns indicating the categories
 
         '''
-        dfd = pd.get_dummies(self.filter(vars))
-        res = (self
-               .bind_col(dfd,  ignore_index=False)
-               )
+        # dfd = pd.get_dummies(self.filter(vars))
+        # res = (self
+        #        .bind_col(dfd,  ignore_index=False)
+        #        )
+        if not prefix or not prefix_sep:
+            prefix_sep=['']*len(vars)
+        if prefix or not prefix_sep:
+            prefix_sep=['_']*len(vars)
+        prefix     = prefix if prefix else ['']*len(vars)
+        res = pd.get_dummies(data=self,
+                             columns=vars,
+                             prefix=prefix,
+                             prefix_sep=prefix_sep,
+                             drop_first=drop_first
+                             )
+        if keep_original:
+            res = res.bind_col(self.select(vars), ignore_index=False)
         return eDataFrame(res)
 
 
@@ -1139,15 +1425,23 @@ class eDataFrame(pd.DataFrame):
         # 
         if isinstance(group, str):
             group = [group]
-        def nest_df(df):
-            return [df]
-        res = (
+        # def nest_df(df):
+        #     return [df]
+        # res = (
+        #     self
+        #     .groupby(group)
+        #     .apply(nest_df)
+        #     .reset_index(drop=False, name='data')
+        # )
+        tmp = (
             self
             .groupby(group)
-            .apply(nest_df)
-            .reset_index(drop=False, name='data')
         )
-        res['data'] = res[['data']].apply(lambda x: x['data'][0], axis=1)
+        tmp = eDataFrame(tmp)
+        res = eDataFrame([*tmp[0]])
+        res.columns = group
+        res['data'] = tmp[1]
+        res = res.mutate_rowwise({'data': lambda x: eDataFrame(x['data'])})
         return eDataFrame(res)
 
     def unnest(self, col, id_vars):
@@ -1156,16 +1450,27 @@ class eDataFrame(pd.DataFrame):
 
         Input:
            col     : name of the column that contains the nested data.frame
-           id_vars : list of variables in the nested data frame
-                     to use as id in the unnested one
+           id_vars : string or list of strings with the variables in the nested 
+                     data frame to use as id in the unnested one
         '''
-        # assert isinstance(self[col])
+        assert isinstance(id_vars, str) or isinstance(id_vars, list), (
+            "\n\nid_vars must be a list or a string\n\n"
+        )
+        if isinstance(id_vars, str):
+            id_vars = [id_vars]
+        res = (
+            self
+            .mutate_rowwise({col: lambda x: eDataFrame(x[col])})
+            )
         if len(id_vars)>1:
             placeholder = "__XXplaceholderXX__"
             placeholder_list=[placeholder]*min(len(id_vars), 1)
             regexp=f"(.*){'(.*)'.join(placeholder_list)}(.*)"
             res = (
-                self
+                res
+                .mutate_rowwise({
+                    col: lambda x: eDataFrame(x[col])
+                })
                 .mutate_rowwise(
                     {col: lambda x:
                      (x[col]
@@ -1175,15 +1480,14 @@ class eDataFrame(pd.DataFrame):
             )
         else:
             res = (
-                self
-                .mutate_rowwise(
-                    {col: lambda x:
-                     (x[col]
-                      .mutate({'id': x[id_vars[0]]})
-                      )})
+                res
+                .mutate_rowwise({
+                    col: lambda x: (x[col] .mutate({'___id___': x[id_vars[0]]}))
+                })
+                
             )
         res = [df for df in res[col]]
-        res = pd.concat(res)
+        res = pd.concat(res).rename(columns={'___id___':id_vars[0]}, inplace=False)
         return eDataFrame(res)
         
 
@@ -1198,515 +1502,403 @@ class eDataFrame(pd.DataFrame):
 
     def select(self, vars=None, regex=None):
         '''
+        Deprecated. Use select_cols
+        '''
+        res = self.select_cols(names=vars, regex=regex)
+        return eDataFrame(res)
+        
+
+    def select_cols(self, names=None, regex=None, positions=None, index=None,
+                    range=None, type=None):
+        '''
+        Select columns of the eDataFrame
+
         Input
-           vars string, list, or dict with the variables to select.
+        -----
+           names string, list, or dict with the variables to select.
                 If a dict, it renames the variables; the keys must be the old
                 names of the variables to select, and the values of the dict
                 the new names.
+
            regex a string with a regular expression. It return the variables
                  that match it
 
-        Ouput
+           positions a list or a number with the position of the columns
+                         to select
+                         Note: the first position starts on 1, not 0
+
+           index a list or a number with the "index" of the columns
+                         to select. It starts at 0
+        
+           range a list with two elements indicating the first and 
+                 last position to select
+                 Note: as for the position argument, this argument counts
+                       columns starting on 1 and the end position is
+                       inclusive. For instance, range=[1:4] returns the 
+                       first column up the the forth.
+        
+           type a string or list of strings with the type of column to select.
+                It accepts all pandas type (int64, float64, object, category,
+                etc.) and also a few other entries:
+
+                'char'    returns object and category columns
+                'string'  same as char
+                'text'    same as char
+                'numeric' returns int64, int32, flat32, and float64
+                'date'    returns pandas datetime type
+
+        Output
+        ------
            a eDataFrame with only the columns selected
+
+        
+        Details
+        -------
+        The order of priority if more than one argument is used is:
+
+            regex   >   names (list/dict/str) >  positions > index > range
+
         '''
+        res = self
         if regex:
-            res = self.filter(regex=f"regex")
-        elif isinstance(vars, dict):
+            res = self.filter(regex=f"{regex}")
+        elif isinstance(names, dict):
             res = (
                 self
-                .rename(columns=vars, inplace=False)
-                .filter(list(vars.values()))
+                .rename(columns=names, inplace=False)
+                .filter(list(names.values()))
             )
-        else:
-            if isinstance(vars, str):
-                vars = [vars]
-            res = self.filter(vars)
-        return eDataFrame(res)
-            
-    
-
-    # def reset_index(self, name=None, drop=False):
-    #     return eDataFrame(self.reset_index(drop=drop, name=name))
-
-    # =====================================================
-    # group by
-    # =====================================================
-    def groupby(self, group, *args, **kwargs):
-        res = egroupby(self, group)
-        return res
-        
-
-    # =====================================================
-    # Statistics
-    # =====================================================
-    def get_outliers(self, var):
-        Q1 = self[var].quantile(0.25)
-        Q3 = self[var].quantile(0.75)
-        IQR = Q3 - Q1
-        idx = (self[var] < (Q1 - 1.5 * IQR)) | (self[var] > (Q3 + 1.5 * IQR))
-        return self.loc[idx,:]
-
-
-    def summary(self, vars=None, funs={'N':'count', "Missing":count_missing,
-                                       'Mean':'mean',
-                                       'Std.Dev':'std',
-                                       # "Q25":quantile25,
-                                       'Median':'median',
-                                       # "Q75":quantile75,
-                                       'Min':'min', "Max":'max'},
-                groups=None, wide_format=None):
-        '''
-        Compute summary of numeric variables
-
-        Input
-           vars a string or a list with columns to compute the summary. If
-                None, compute summary for all numerical variables
-           funs a dictionary of function labels (key) and functions (value)
-                to use for the summary. Default values use some common
-                summary functions (mean, median, etc.)
-           groups a string or list with variable names. If provided, compute
-                  the summaries per group
-           wide_format if True, return results in a wide_format
-        
-        Output
-          eDataFrame with summary
-        '''
-        if not vars:
-            vars = self.select_dtypes(exclude = ['object']).columns.values.tolist()
-        if groups and not isinstance(groups, list):
-            groups = [groups]
-        if vars and not isinstance(vars, list):
-            vars = [vars]
-        assert isinstance(funs, list) or isinstance(funs, dict),\
-        ("'funs' must be a list or a dictionary of functions")
-        assert isinstance(vars, list), "'vars' must be a list of variable names"
-        funs_labels={}
-        if isinstance(funs, dict):
-            funs_names = list(funs.values())
-            funs = {fun:fun_name for fun_name, fun in funs.items()}
-        else:
-            funs_names = funs
-            funs = {fun:fun_name for fun_name, fun in zip(funs, funs)}
-        for fun_name, fun_label in funs.items():
-            if callable(fun_name):
-                funs_labels[fun_name.__name__] = fun_label
-            else:
-                funs_labels[fun_name] = fun_label
+        elif isinstance(names, str):
+            names = [names]
+            res = self.filter(names)
+        elif isinstance(names, list):
+            res = self.filter(names)
         # 
-        if groups:
-            res = self.__summary_group__(vars, funs_names, groups, wide_format)
-        else:
-            res = self.__summary__(vars, funs_names)
+        elif isinstance(positions, list):
+            positions = [cp-1 for cp in positions]
+            res  = self.iloc[:,positions]
+        elif isinstance(positions, int):
+            res  = self.iloc[:,[positions-1]]
         # 
-        res.rename(columns=funs_labels, inplace=True)
-        cols = list(res.columns)
-        cols = [col for col in cols if col not in list(funs_labels.keys())]
-        res = res.filter(cols+list(funs_labels.keys()))
+        elif isinstance(index, list):
+            res  = self.iloc[:,index]
+        elif isinstance(index, int):
+            res  = self.iloc[:,[index]]
         # 
-        return eDataFrame(res)
-
-
-    def __summary__(self, vars, funs):
-        res = (self
-               .filter(vars)
-               .apply(funs)
-               .transpose()
-               .reset_index(drop=False)
-               .rename(columns={'index':"variable"}, inplace=False)
-        )
+        elif isinstance(range, list):
+            res  = self.iloc[:,range[0]-1:range[1]]
+        # 
+        res = eDataFrame(res)
+        if type:
+            res = res.__select_cols_type__(type)
         return res
 
 
-    def __summary_group__(self, vars, funs, groups=None, wide_format=None):
-        funs_name=[]
-        for f in funs:
-            if hasattr(f, '__call__'):
-                funs_name.append(f.__name__)
+    def __select_cols_type__(self, type):
+        res = eDataFrame()
+        tmp = eDataFrame()
+        if isinstance(type, str):
+            type = [type]
+        for tp in type:
+            if tp=='numeric':
+                tmp = self.select_dtypes(include=['int64', 'float64',
+                                                  'int32', 'float32'])
+            elif tp=='char' or tp=='string' or tp=='text':
+                tmp = self.select_dtypes(include=['category', 'object'])
+            elif tp=='date':
+                tmp = self.select_dtypes(include=['datetime64'])
             else:
-                funs_name.append(f)
-        res=(self
-             .filter(vars+groups)
-             .groupby(groups)
-             .agg(funs)
-             .reset_index( drop=False)
-        )
-        colnames_new = []
-        for i, tup in enumerate(res.columns):
-            l = list(tup)
-            if l[1]:
-                col = l[0]+"_"+l[1]
-                colnames_new.append((l[0]+"_"+l[1]))
-            else:
-                colnames_new.append((l[0]))
-        res.columns = colnames_new
-        #
-        regexp="".join([f"{v}|" for v in funs_name])
-        regexp=re.sub(pattern="\|$", repl="", string=regexp)
-        regexp="("+regexp+")"
-        # 
-        res = (res
-                .melt(id_vars=groups, value_vars=None,
-                      var_name='variable', value_name='value', col_level=None))
-        cols = (res
-                .variable
-                .str
-                .extract("(.*)_"+regexp)
-        )
-        cols.columns = ["variable", 'stat']
-        res[["variable", 'stat']] = cols[["variable", 'stat']]
-        res = (res
-               .filter(groups+['variable', "stat", "value"])
-               .assign(stat=lambda x: [f"variable_{v}" for v in x.stat])
-               .pivot_table(values='value', index=groups+['variable'], columns='stat', aggfunc="sum")
-               .reset_index( drop=False))
-        # wide format
-        if wide_format:
-            values = [f"variable_{fun}" for fun in funs_name]
-            res = (res
-                   .pivot_table(values=values, index='variable',
-                                columns=groups, aggfunc="sum")
-                   .reset_index( drop=False)
-            )
-            prefix = "_".join(list(res.columns.names))
-            suffix = ["_".join([str(s) for s in v]) for v in res.columns]
-            res.columns=[f"{prefix}_{suf}" for suf in suffix]
-            res.columns= [re.sub(pattern="^stat_|", repl="", string=s) for s in res.columns]
-            res.columns= [re.sub(pattern="variable__$", repl="variable", string=s) for s in res.columns]
-            res.columns= [re.sub(pattern="_variable_", repl="_", string=s) for s in res.columns]
-            # 
-        col_names = ['variable_'+fun for fun in funs_name]
-        for col_name, fun in zip(col_names, funs_name):
-            res.rename(columns={col_name:fun}, inplace=True)
+                try:
+                    tmp = self.select_dtypes(include=[tp])
+                except (OSError, IOError, TypeError) as e:
+                    print(f"Error: type {tp} does no exits!")
+            if tmp.nrow>0:
+                res = res.bind_col(tmp,  ignore_index=False)
         return res
 
 
-    def freq(self, vars, condition_on=None):
+    def mutate_type(self, col2type=None, from_to=None, **kws):
         '''
-        Compute frequency and marginal frequence (conditional on)
+        Convert column to different types. See pandas astype method.
 
         Input:
-           vars a list of string with variable names to return values frequencies
-           condition_on a list of strings with variable names to condition 
-                        marginal frequencies on. They must be also in the 'vars'
+           col2type a dict with {colname:newtype}. See pandas astype method.
+
+           from_to dictionary to convert all columns from one type into another.
+                   keys should the old type (type "from"), values should be the
+                   new type (type "to")
+
+                   Note: the argument dtype of astype takes {colname:newtype}.
+                         from_to takes {from_type:to_type}
+                 
+                   Note: for the "from" type, it accepts all the types used in 
+                         the argument "type" in the method select_cols(). see
+                         pandasci.eDataFrame.select_cols()
+
+           **kws see pandas astype (not implemented)
 
         Output:
-            DataFrame with frequencies
-
+            eDataFrame with converted types
         '''
-        if not isinstance(vars, list):
-            vars = [vars]
-        if condition_on and not isinstance(condition_on, list):
-            condition_on = [condition_on]
-        if condition_on:
-            if not all([cond_on in vars for cond_on in condition_on]):
-                for cond_on in condition_on:
-                    if cond_on not in vars:
-                        vars.append(cond_on)
-
-        if not condition_on:
-            def compute_stdev(df):
-                n = df['n_tot']
-                p = df['freq']/100
-                df['stdev'] = 100*np.sqrt(p*(1-p)/n)
-                return eDataFrame(df)
-            res=(self
-                 .groupby(vars)
-                 .size()
-                 .reset_index(name='n', drop=False)
-                 .assign(freq=lambda x: 100*x.n/x.n.sum(),
-                         n_tot = lambda x: x.n.sum())
-                 .groupby(vars)
-                 .apply(compute_stdev)
-                 .drop(['n_tot'], axis=1)
-            )
-        else:
-            def compute_freq(df):
-                df['freq'] = 100*df['n']/sum(df['n'])
-                return eDataFrame(df)
-            def compute_stdev(df):
-                n = sum(df['n'])
-                p = df['freq']/100
-                df['stdev'] = 100*np.sqrt(p*(1-p)/n)
-                return eDataFrame(df)
-            res = (self
-                   .groupby(vars)
-                   .size()
-                   .reset_index(name='n', drop=False)
-                   .groupby(condition_on)
-                   .apply(compute_freq)
-                   .groupby(condition_on)
-                   .apply(compute_stdev)
-                   .sort_values(by=(condition_on+vars),  ascending=True)
-            )
-        # confidence intervals
-        res = (
-            res
-            .mutate({"lo": lambda x: x['freq']-1.96*x['stdev']})
-            .mutate({"hi": lambda x: x['freq']+1.96*x['stdev']})
-        )
-        return eDataFrame(res)
-
-    def ci_t(self, var, alpha=.95):
-        x = self[var]
-        ci = st.t.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha,
-                           df=len(x)-1)
-        return ci
-        
-    def ci_norm(self, var, alpha=.95):
-        x = self[var]
-        ci = st.norm.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha)
-        return ci
-
-    def corr_pairwise(self, vars, long_format=True, lower_tri=False):
-        assert isinstance(vars, list), "'vars' need to be a list"
-        res = (self
-               .filter(vars)
-               .corr()
-        )
-        if long_format:
-            res.values[np.triu_indices_from(res, 0)] = np.nan
-            res = res.unstack().reset_index( drop=False).dropna()
-            res.columns = ['v1', 'v2', 'corr']
-        elif lower_tri:
-            res.values[np.triu_indices_from(res, 0)] = np.nan
-        return res
-
-
-    def pearsonr(self, vars, alpha=0.05):
-        ''' 
-        Calculate Pearson correlation along with the confidence interval 
-        using scipy and numpy
-
-        Parameters
-        ----------
-        x, y : iterable object such as a list or np.array
-          Input for correlation calculation
-        alpha : float
-          Significance level. 0.05 by default
-        Returns
-        -------
-        r : float
-          Pearson's correlation coefficient
-        pval : float
-          The corresponding p value
-        lo, hi : float
-          The lower and upper bound of confidence intervals
-        '''
-        assert isinstance(vars, list), "'vars' must be a list"
-        assert len(vars)==2, "'vars' must be a string of size 2"
-        subset = self[vars].dropna(subset=None, axis=0)
-        x = subset[vars[0]]
-        y = subset[vars[1]]
-        r, p = stats.pearsonr(x,y)
-        r_z = np.arctanh(r)
-        se = 1/np.sqrt(x.size-3)
-        z = stats.norm.ppf(1-alpha/2)
-        lo_z, hi_z = r_z-z*se, r_z+z*se
-        lo, hi = np.tanh((lo_z, hi_z))
-        return {'cor':r, 'p-value':p, 'low':lo, "high":hi}
-    
-
-    def prop_test(self, var, var_value,
-                  treat, treat_value, control_value,
-                  group_regexp=None,
-                  alpha=.05,
-                  test = ['chisq', 'z', 't'],
-                  tail='two'):
-        '''
-        Compute test statistics of difference in proportions
-
-        Inputs:
-            var  : string with the outcome variable name to compute proporitons
-            var_value : string/numeric value with value of the outcome 
-                        variable to compute difference between treatment
-                        and control groups
-            treat : string with the name of the treatment variable
-            treat_value : value of the treatment in the var 'treat'
-            control_value : value of the control in the var 'treat'
-            group_regexp  : string for subset the data set using 'query'
-                            function
-            alpha : alpha-level of the test
-            test : string with the test statistics to use (chisq, z, t)
-            tail : string with either 'one' or 'two' 
-            
-        '''
-        assert tail in ['one', 'two'], "'tail' must be either 'one' or 'two'"
-        if group_regexp:
-            tmp = self.query(group_regexp)
-        else:
-            tmp = self
-        tmp = (tmp
-               .query(f"{treat}==['{treat_value}', '{control_value}']")
-               .case_when("y", {
-                   f"{var}=='{var_value}'": f"1",
-                   f"{var}!='{var_value}'": f"0",
-               })
-               .case_when('t', {
-                   f"{treat}=='{treat_value}'": f"1",
-                   f"{treat}=='{control_value}'": f"0",
-               })
-               .filter([var, "y", treat, "t"])
-               .groupby([ "t", "y"])
-               .size()
-               .reset_index(name="n",drop=False)
-        )
-        y1 = float(tmp.loc[(tmp.t==1) & (tmp.y==1), 'n'])
-        n1 = float(tmp.loc[(tmp.t==1) & (tmp.y==0), 'n']) + y1
-        y2 = float(tmp.loc[(tmp.t==0) & (tmp.y==1), 'n'])
-        n2 = float(tmp.loc[(tmp.t==0) & (tmp.y==0), 'n']) + y2
-        p1 = y1/n1
-        p2 = y2/n2
-        sd = np.sqrt( p1*(1-p1)/n1 + p2*(1-p2)/n2 )
-        ATE      = p1 - p2
-        if tail=='two':
-            t = dnorm.ppf(q=1-alpha/2, loc=0, scale=1)
-            # t =  tdist(df).ppf()
-        if tail=='one':
-            t = dnorm.ppf(q=1-alpha, loc=0, scale=1)
-            # t = tdist(df).ppf(1-alpha)
-        # 
-        ATE_low  = ATE - t*sd
-        ATE_high = ATE + t*sd
-        if isinstance(test, list):
-            test = 'chisq'
-        if test == 'chisq':
-            stat_all = prop_chisqtest([y1, y2], [n1, n2])
-            stat   = stat_all[0]
-            pvalue = stat_all[1]
-        return pd.DataFrame({"variable": [var], "variable_value": [var_value],
-                             "group":group_regexp,
-                             'treat_value':[treat_value],
-                             'control_value':[control_value],
-                             "p1":[p1], "p2": [p2],
-                             "ATE":[ATE],
-                             "ATE_low":[ATE_low], "ATE_high":[ATE_high],
-                             "stat": [stat],
-                             'pvalue':[pvalue], 'test':[test]})
-    
-
-    def tab(self, vars_row, vars_col, groups=None,
-            margins=True,normalize='all',#row/columns
-            margins_name='Total', report_format=True, digits=2):
-        tab = self.copy()
-        tab[vars_row] = tab[vars_row].astype(str)
-        tab[vars_col] = tab[vars_col].astype(str)
-        if groups:
-            groups = [groups] if isinstance(groups, str) else groups
-            ngroups=len(groups)
-            resn = tab.__tab_groups__(vars_row, vars_col, normalize=False,
-                                       margins=margins, margins_name=margins_name,
-                                       groups=groups)
-            resp = tab.__tab_groups__(vars_row, vars_col, normalize,
-                                       margins, margins_name, groups)
-        else:
-            ngroups=0
-            resn = tab.__tab__(vars_row, vars_col, normalize=False,
-                                margins=margins, margins_name=margins_name)
-            resp = tab.__tab__(vars_row, vars_col, normalize=normalize,
-                                margins=margins, margins_name=margins_name)
-        colsn=resn.columns[ngroups+1:]
-        colsp=resp.columns[ngroups+1:]
-        res=eDataFrame(resp.iloc[:,0:ngroups+1])
-        if report_format:
-            for coln, colp in zip(colsn, colsp):
-                col = [f"{round(100*p, digits)} ({n})" for p,n
-                       in zip(resp[colp], resn[coln])]
-                res = res.mutate({coln:col})
-        else:
-            for coln, colp in zip(colsn, colsp):
-                res[coln]=resn[coln]
-                res[str(colp)+"_freq"]=100*resp[colp]
-        return eDataFrame(res)
-
-
-    def __tab_groups__(self, vars_row, vars_col, normalize,
-                       margins, margins_name, groups):
-        res = (self.
-               groupby(groups)
-               .apply(eDataFrame.__tab__,
-                      vars_row, vars_col, normalize, margins, margins_name)
-               .reset_index(drop=False)
-        )
-        cols = [col for cidx, col in enumerate(list(res.columns) ) if
-                not bool(re.search(pattern='^level_[0-9]$', string=col))]
-        res=res.filter(cols)
-        return eDataFrame(res)
-        
-
-    def tabn(self, vars_row, vars_col, normalize=False, margins=True,
-             margins_name='Total'):
-        res = self.__tab__(vars_row, vars_col, normalize=normalize,
-                           margins=margins, margins_name=margins_name)
-        return eDataFrame(res)
-
-
-    def tabp(self, vars_row, vars_col, normalize="all", margins=True,
-             margins_name='Total'):
-        res = self.__tab__(vars_row, vars_col, normalize=normalize,
-                           margins=margins, margins_name=margins_name)
-        return eDataFrame(res)
-
-
-    def __tab__(self, vars_row, vars_col, normalize='all', margins=True,
-                margins_name='Total'):
-        if normalize=='row':
-            normalize='index'
-        if normalize=='column' or normalize=='col':
-            normalize='columns'
-        res = pd.crosstab(index=[self[vars_row]],
-                          columns=[self[vars_col]],
-                          margins=margins, margins_name=margins_name,
-                          normalize=normalize)
-        res = res.reset_index(drop=False)
-        return res
-
-    # =====================================================
-    # Utilities
-    # =====================================================
-    def names(self, regexp=None, print_long=False):
-        names = list(self)
-        if regexp:
-            names = [nm for nm in names if
-                     bool(re.search(pattern=regexp, string=nm))]
-        if print_long:
-            for col in names:
-                print(col)
-        else:
-            print(print(names))
-        if not names:
-            print("\nNo column name matches the regexp!\n")
-            
-
-    def to_org(self, round=4):
-        res = self
-        if round:
-            res = res.round(round)
-        s = res.to_csv(sep='|', index=False).replace('\n', ' | \n | ')
-        s = re.sub(pattern="^", repl="|", string=s)
-        s = re.sub(pattern=".$", repl="", string=s)
-        print(s)
-
-    
-    def flatten_columns(self, sep='_'):
-        'Flatten a hierarchical index'
-        assert isinstance(self.columns, pd.MultiIndex), "Not a multiIndex"
-        self = (self.reset_index(drop=True))
-        def _remove_empty(column_name):
-            return tuple(element for element in column_name if element)
-        def _join(column_name):
-            column_name = [str(col) for col in column_name]
-            return sep.join(column_name)
-        new_columns = [_join(_remove_empty(column)) for column in
-                       self.columns.values]
-        self.columns = new_columns
+        if col2type:
+            for col, type in col2type.items():
+                if type=='date':
+                    col2type[col] = 'datetime64'
+                elif type=='numeric':
+                    col2type[col] = 'float64'
+                elif type=='char' or type=='string' or type=='text':
+                    col2type[col] = 'category'
+            self = eDataFrame(self.astype(dtype=col2type))
+        if from_to:
+            for from_type, to_type in from_to.items():
+                vars = self.select_cols(type=from_type).columns.to_list()
+                new_types = {}
+                for var in vars:
+                    if to_type=='date':
+                        totype = 'datetime64'
+                    elif to_type=='numeric':
+                        totype = 'float64'
+                    elif to_type=='char' or to_type=='string' or to_type=='text':
+                        totype = 'category'
+                    else:
+                        totype=to_type
+                    new_types[var] = totype
+                self = eDataFrame(self.astype(dtype=new_types))
         return self
 
 
-    def flatten(self, drop=True):
-        ngroups=len(self.index.codes)
-        idx = self.index.codes[ngroups-1]
-        res=self.reset_index(drop=drop).set_index(idx).sort_index()
-        return res
+    def select_rows(self, query=None, regex=None, row_numbers=None, index=None,
+                    dropna=None, keepna=None):
+        '''
+        Return eDataFrame with matched rows. See details
+
+        Input
+        -----
+           regex string, number, or dict. If string, select all rows that match the regex.
+                 It dict, the key must be the column name and the value the regex.
+                 It will return all rows that match EITHER one of the regex for
+                 the respective column specified. 
+                 Note: one can use select_rows repeatedly to keep only rows that
+                       math ALL regex for each respective column. See examples.
+                 Note: numbers can be used as values to match, but they are matched
+                       as usual strings.
+
+           query a string with a text to return the rows that match the criteria
+                 exactly. Uses pandas 'query' function. See example.
+
+           row_numbers a list with the number of the rows to select. It starts 
+                       on 1 for the first row (note that it is differnt from 
+                       row index, which usually starts at 0 for the first row)
+
+           index a list with values of the row index to select
+           drop_na a string or list of column names to drop NA. If a boolean value 
+                   "True" is used, it removes rows with NA considering all columns
+
+        Output
+        ------
+
+        Details
+        -------
+        If all parameters are provided, only the one with the highest priority will
+        be considered. The priority order is 
+
+                     regex   >   query   >   row_numbers   >   index
+
+        The drop_na is always considered. To remove rows with NAs, it uses the 
+        method dropna.
+
+
+        Examples
+        --------
+        TBD
+
+        '''
+        res = self
+        if regex:
+            assert (isinstance(regex, dict) or
+                    isinstance(regex, str) or
+                    isinstance(regex, float) or
+                    isinstance(regex, int)), "regex must be either a string, "+\
+            "a number, or a dictionary"
+            if isinstance(regex, dict):
+                idx = np.array([False]*self.nrow)
+                for var, var_regex in regex.items():
+                    var = str(var)
+                    idxi = self[var].astype(str).str.contains(f"{var_regex}").values
+                    idx  = (idx | idxi) 
+                res = self.loc[idx]
+            else:
+                if isinstance(regex, float) or isinstance(regex, int):
+                    regex = str(regex)
+                idx = np.array([False]*self.nrow)
+                f = lambda x: x.astype(str).str.contains(regex, na=False, case=False)
+                res = self.astype(str)
+                res = self[res.apply(f).any(axis=1)]
+        elif query:
+            res = self.query(expr=query)
+        elif row_numbers:
+            assert isinstance(row_numbers, list), 'row_numbers must be a list'
+            row_numbers = [rn-1 for rn in row_numbers]
+            res = self.iloc[row_numbers]
+        elif index:
+            assert isinstance(index, list), 'index must be a list'
+            res = self.loc[index]
+        if dropna:
+            assert (
+                isinstance(dropna, list) or
+                isinstance(dropna, str) or
+                isinstance(dropna, bool)
+            ), "dropna must be None, a list, a boolean, or a string"
+            if not dropna or (isinstance(dropna, bool) and dropna):
+                dropna = None 
+            if dropna and isinstance(dropna, str):
+                dropna = [dropna]
+            if res.nrow>0:
+                res = res.dropna(subset=dropna, axis=0)
+        if keepna:
+            assert (
+                isinstance(keepna, list) or
+                isinstance(keepna, str) or
+                isinstance(keepna, bool)
+            ), "keepna must be None, a list, a boolean, or a string"
+            if not keepna or (isinstance(keepna, bool) and keepna):
+                keepna = res.names() 
+            if keepna and isinstance(keepna, str):
+                keepna = [keepna]
+            if res.nrow>0:
+                res=res[res[keepna].isnull().any(axis=1)]
+        return eDataFrame(res)
+
+
+            
+    def drop_cols(self, names=None, regex=None, **kws):
+        '''
+        
+        
+        Input:
+           names string or list with the variables to drop.
+           regex a string with a regular expression. It drops the variables
+                 that match it. If provided, 'names' is ignored
+           kws check pandas drop method (works only when regex is not provided)
+
+        Output:
+            a eDataFrame without the columns selected to drop
+
+        '''
+        if regex:
+            res = self.select(regex=f"^((?!{regex}).)*$")
+        else:
+            if isinstance(names, str):
+                names = [names]
+            kws["axis"] = 1
+            res = self.drop(names, **kws)
+        return eDataFrame(res)
+
+
+    def drop_rows(self, query=None, regex=None, row_numbers=None, index=None,
+                    dropna=None, keepna=None):
+        '''
+        Revove rows. See select_rows for parameters.
+        '''
+        idx = self.index
+        if query or regex or row_numbers or index:
+            idx_remove = self.select_rows(query=query, regex=regex,
+                                          row_numbers=row_numbers, index=index,
+                                          dropna=None).index
+            idx_keep = list(np.setdiff1d(idx, idx_remove))
+            res = self.loc[idx_keep]
+        else:
+            res = self
+        if dropna:
+            res = res.select_rows(dropna=dropna)
+        # if len(idx_remove)>0:
+        #     idx_keep = list(np.setdiff1d(idx, idx_remove))
+        #     res = self.loc[idx_keep]
+        # else:
+        #     res = self
+        if keepna:
+            res = res.select_rows(keepna=keepna)
+        return eDataFrame(res)
+
+
+    def fill_na(self, value=None, vars=None, **kws):
+        '''
+        Fill NA values with the provided 'value'
+        
+        Input
+           value the value to fill NAs with
+           vars a string of list with the variable to fill in. If None,
+                fill all variables
+           kws see pd.fillna
+        
+        Output
+           eDataFrame with NAs filled
+        '''
+        inplace = kws.get("inplace", False)
+        vars = [vars] if isinstance(vars, str) else vars
+        assert not vars or isinstance(vars, list), 'vars must be a string or a list'
+        if not vars and not inplace:
+            self = self.fillna(value, **kws)
+        elif not vars and inplace:
+            self.fillna(value, **kws)
+        elif vars and not inplace:
+            for var in vars:
+                self[var] = self[var].fillna(value, **kws)
+        elif vars and inplace:
+            for var in vars:
+                self[var].fillna(value, **kws)
+        return self
+        
+
+
+    def rename_cols(self, columns=None, regex=None, tolower=False, inplace=False,
+                    **kws):
+        '''
+        Rename columns of the eDataFrame
+
+        Input
+        -----
+           columns  : dict. Keys are the old name, values are the new one.
+           regex    : dict. When the key is the name of the old variable,
+                      the value must be another dict with 
+                      {regex:replacement string}
+                      Otherwise, it can receive a dict with
+                      {regex:replacement string}
+                      only, and it will replace the regular expression match in
+                      all columns
+           tolower  : change capital letters to lower case
+           inplace  : boolean. If True, make change in place
+        
+           **kws other arguments (see pd.DataFrame.rename)
+
+        Output
+        ------
+            eDataFrame with columns renamed
+
+        Example
+        -------
+
+        '''
+        assert not (columns and regex), "Use either columns or regex, but not both"
+        if tolower:
+            self.columns=self.columns.str.lower()
+        if columns:
+            res = self.rename(columns=columns, inplace=inplace)
+        if regex:
+            res=self
+            for k, v in regex.items():
+                if isinstance(v, dict):
+                    from_regex, to_str=*v.keys(), *v.values()
+                    res = res.rename(columns={k:re.sub(from_regex,to_str, k)},
+                                     inplace=inplace)
+                else:
+                    res = res.rename(columns=lambda x: re.sub(k,v,x),
+                                     inplace=inplace)
+        if inplace:
+            self=res
+        else:
+            return eDataFrame(res)
+
 
     def scale(self, vars=None, exclude=None, centralize=True, center='mean',
               group=None, newnames=None):
@@ -1791,6 +1983,660 @@ class eDataFrame(pd.DataFrame):
                 x=x/x.std()
             self[var]=x
         return self
+
+
+    # def reset_index(self, name=None, drop=False):
+    #     return eDataFrame(self.reset_index(drop=drop, name=name))
+
+    # =====================================================
+    # group by
+    # =====================================================
+    def groupby(self, group, *args, **kwargs):
+        res = egroupby(self, group)
+        return res
+        
+
+    # =====================================================
+    # Statistics
+    # =====================================================
+    def get_outliers(self, var):
+        Q1 = self[var].quantile(0.25)
+        Q3 = self[var].quantile(0.75)
+        IQR = Q3 - Q1
+        idx = (self[var] < (Q1 - 1.5 * IQR)) | (self[var] > (Q3 + 1.5 * IQR))
+        return self.loc[idx,:]
+
+
+    def summary(self, vars=None, funs={'N':'count', "Missing":count_missing,
+                                       'Mean':'mean',
+                                       'Std.Dev':'std',
+                                       # "Q25":quantile25,
+                                       'Median':'median',
+                                       # "Q75":quantile75,
+                                       'Min':'min', "Max":'max'},
+                groups=None, wide_format=None):
+        '''
+        Compute summary of numeric variables
+
+        Input
+           vars a string, a dict, or a list with columns to compute the summary. 
+                If None, compute summary for all numerical variables.
+                If dict, it must be {<colname>:<new name>}
+           funs a dictionary of function labels (key) and functions (value)
+                to use for the summary. Default values use some common
+                summary functions (mean, median, etc.)
+           groups a string or list with variable names. If provided, compute
+                  the summaries per group
+           wide_format if True, return results in a wide_format
+        
+        Output
+          eDataFrame with summary
+        '''
+        vars_newname =None # to use when dict is used for vars
+        if not vars:
+            vars = self.select_dtypes(exclude = ['object']).columns.values.tolist()
+        if groups and not isinstance(groups, list):
+            groups = [groups]
+        if vars and isinstance(vars, str):
+            vars = [vars]
+        if vars and isinstance(vars, dict):
+            vars_oldname = list(vars.keys())
+            vars_newname = list(vars.values())
+            vars = vars_oldname 
+        if groups:
+            assert not 'variable' in groups,\
+            ("Please, rename the variable called 'variable'. A group variable "+
+             "called 'variable' is not allowed")
+        assert isinstance(funs, list) or isinstance(funs, dict),\
+        ("'funs' must be a list or a dictionary of functions")
+        assert isinstance(vars, list), "'vars' must be a list of variable names"
+        funs_labels={}
+        # 
+        if isinstance(funs, dict):
+            funs_names = list(funs.values())
+            funs = {fun:fun_name for fun_name, fun in funs.items()}
+        else:
+            funs_names = funs
+            funs = {fun:fun_name for fun_name, fun in zip(funs, funs)}
+        for fun_name, fun_label in funs.items():
+            if callable(fun_name):
+                funs_labels[fun_name.__name__] = fun_label
+            else:
+                funs_labels[fun_name] = fun_label
+        # 
+        # 
+        if groups:
+            res = self.__summary_group__(vars, funs_names, groups, wide_format)
+        else:
+            res = self.__summary__(vars, funs_names)
+        # 
+        res.rename(columns=funs_labels, inplace=True)
+        cols = list(res.columns)
+        cols = [col for col in cols if col not in list(funs_labels.keys())]
+        res = res.filter(cols+list(funs_labels.keys()))
+        # 
+        if 'Missing' in res.columns and 'N' in res.columns:
+            res = eDataFrame(res)
+            vars = ['variable', 'N', 'Missing', "Missing (%)", "Mean",
+                    "Std.Dev", "Median", "Min", "Max"] 
+            if not groups:
+                vars = vars
+            else:
+                vars = groups+vars
+            res = (
+                res
+                .mutate({"Missing (%)": lambda x: x['Missing']/x['N'] })
+                .select(vars+ list(res.columns))
+            )
+            res = res.loc[:,~res.columns.duplicated()]
+
+        if vars_newname:
+            newnames = {old:new for old, new in zip(vars_oldname, vars_newname)}
+            res=res.replace({"variable":newnames}, regex=False, inplace=False)
+        try:
+            res=eDataFrame(res)
+            res=res.mutate_type(col2type={"N":int}, from_to=None)
+        except (KeyError) as e:
+            pass
+        return eDataFrame(res)
+
+
+    def __summary__(self, vars, funs):
+        res = (self
+               .filter(vars)
+               .apply(funs)
+               .transpose()
+               .reset_index(drop=False)
+               .rename(columns={'index':"variable"}, inplace=False)
+        )
+        return res
+
+
+    def __summary_group__(self, vars, funs, groups=None, wide_format=None):
+        funs_name=[]
+        for f in funs:
+            if hasattr(f, '__call__'):
+                funs_name.append(f.__name__)
+            else:
+                funs_name.append(f)
+        
+        res=(self
+             .filter(list(set(vars+groups)))
+             .groupby(groups)
+             .agg(funs)
+             .reset_index(drop=False)
+        )
+        colnames_new = []
+        for i, tup in enumerate(res.columns):
+            l = list(tup)
+            if l[1]:
+                col = l[0]+"_"+l[1]
+                colnames_new.append((l[0]+"_"+l[1]))
+            else:
+                colnames_new.append((l[0]))
+        res.columns = colnames_new
+        #
+        regexp="".join([f"{v}|" for v in funs_name])
+        regexp=re.sub(pattern="\|$", repl="", string=regexp)
+        regexp="("+regexp+")"
+        # to keep missing on the df
+        regexp=re.sub(pattern="count_missing", repl='cmissing', string=regexp)
+        res = (res
+                .melt(id_vars=groups, value_vars=None,
+                      var_name='variable', value_name='value', col_level=None)
+               )
+        cols = (res
+                .variable
+                # this transformation keep 'missing' stat on the df
+                .replace({"count_missing":'cmissing'}, regex=True, inplace=False)
+                .str
+                .extract("^(.*)_"+regexp+"$")
+                .replace({'cmissing':"count_missing"}, regex=False, inplace=False)
+        )
+        cols.columns = ["variable", 'stat']
+        res[["variable", 'stat']] = cols[["variable", 'stat']]
+        res = (res
+               .filter(groups+['variable', "stat", "value"])
+               .assign(stat=lambda x: [f"variable_{v}" for v in x.stat])
+               .pivot_table(values='value', index=groups+['variable'], columns='stat', aggfunc="sum")
+               .reset_index( drop=False))
+        # wide format
+        if wide_format:
+            values = [f"variable_{fun}" for fun in funs_name]
+            res = (res
+                   .pivot_table(values=values, index='variable',
+                                columns=groups, aggfunc="sum")
+                   .reset_index( drop=False)
+            )
+            prefix = "_".join(list(res.columns.names))
+            suffix = ["_".join([str(s) for s in v]) for v in res.columns]
+            res.columns=[f"{prefix}_{suf}" for suf in suffix]
+            res.columns= [re.sub(pattern="^stat_|", repl="", string=s) for s in res.columns]
+            res.columns= [re.sub(pattern="variable__$", repl="variable", string=s) for s in res.columns]
+            res.columns= [re.sub(pattern="_variable_", repl="_", string=s) for s in res.columns]
+            # 
+        res = eDataFrame(res)
+        col_names = ['variable_'+fun for fun in funs_name]
+        for col_name, fun in zip(col_names, funs_name):
+            res.rename(columns={col_name:fun}, inplace=True)
+        return res
+
+
+    def freq(self, vars=None, condition_on=None):
+        '''
+        Compute frequency and marginal frequence (conditional on)
+
+        Input:
+           vars a list of string with variable names to return values frequencies
+           condition_on a list of strings with variable names to condition 
+                        marginal frequencies on. They must be also in the 'vars'
+
+        Output:
+            DataFrame with frequencies
+
+        '''
+        assert vars, "Parameter 'vars' not informed."
+        if not isinstance(vars, list):
+            vars = [vars]
+        if condition_on and not isinstance(condition_on, list):
+            condition_on = [condition_on]
+        if condition_on:
+            if not all([cond_on in vars for cond_on in condition_on]):
+                for cond_on in condition_on:
+                    if cond_on not in vars:
+                        vars.append(cond_on)
+
+        if not condition_on:
+            def compute_stdev(df):
+                n = df['n_tot']
+                p = df['freq']/100
+                df['stdev'] = 100*np.sqrt(p*(1-p)/n)
+                return eDataFrame(df)
+            res=(self
+                 .groupby(vars)
+                 .size()
+                 .reset_index(name='n', drop=False)
+                 .assign(freq=lambda x: 100*x.n/x.n.sum(),
+                         n_tot = lambda x: x.n.sum())
+                 .groupby(vars)
+                 .apply(compute_stdev)
+                 .drop(['n_tot'], axis=1)
+            )
+        else:
+            def compute_freq(df):
+                df['freq'] = 100*df['n']/sum(df['n'])
+                return eDataFrame(df)
+            def compute_stdev(df):
+                n = sum(df['n'])
+                p = df['freq']/100
+                df['stdev'] = 100*np.sqrt(p*(1-p)/n)
+                return eDataFrame(df)
+            res = (self
+                   .groupby(vars)
+                   .size()
+                   .reset_index(name='n', drop=False)
+                   .groupby(condition_on)
+                   .apply(compute_freq)
+                   .groupby(condition_on)
+                   .apply(compute_stdev)
+                   .sort_values(by=(condition_on+vars),  ascending=True)
+            )
+        res=eDataFrame(res)
+        # confidence intervals
+        res = (
+            res
+            .mutate({"lo": lambda x: x['freq']-1.96*x['stdev']})
+            .mutate({"hi": lambda x: x['freq']+1.96*x['stdev']})
+        )
+        return eDataFrame(res)
+
+    def ci_t(self, var, alpha=.95):
+        x = self[var]
+        ci = st.t.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha,
+                           df=len(x)-1)
+        return ci
+        
+    def ci_norm(self, var, alpha=.95):
+        x = self[var]
+        ci = st.norm.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha)
+        return ci
+
+    def corr_pairwise(self, vars, long_format=True, lower_tri=False):
+        assert isinstance(vars, list), "'vars' need to be a list"
+        res = (self
+               .filter(vars)
+               .corr()
+        )
+        if long_format:
+            res.values[np.triu_indices_from(res, 0)] = np.nan
+            res = res.unstack().reset_index( drop=False).dropna()
+            res.columns = ['v1', 'v2', 'corr']
+        elif lower_tri:
+            res.values[np.triu_indices_from(res, 0)] = np.nan
+        return res
+
+
+    def pearsonr(self, vars, alpha=0.05):
+        ''' 
+        Calculate Pearson correlation along with the confidence interval 
+        using scipy and numpy
+
+        Parameters
+        ----------
+        x, y : iterable object such as a list or np.array
+          Input for correlation calculation
+        alpha : float
+          Significance level. 0.05 by default
+        Returns
+        -------
+        r : float
+          Pearson's correlation coefficient
+        pval : float
+          The corresponding p value
+        lo, hi : float
+          The lower and upper bound of confidence intervals
+        '''
+        assert isinstance(vars, list), "'vars' must be a list"
+        # assert len(vars)==2, "'vars' must be a string of size 2"
+        res={'var1':[],
+             'var2':[],
+             'corr':[],
+             'p-value':[],
+             'low':[],
+             'high':[],
+             }
+        vars1=vars[:-1]
+        vars2=vars[1:]
+        for var1 in vars1:
+            for var2 in vars2:
+                if var1!=var2:
+                    res["var1"]+=[var1]
+                    res["var2"]+=[var2]
+                    # 
+                    subset = self[[var1,var2]].dropna(subset=None, axis=0)
+                    x = np.array(subset[var1])
+                    y = np.array(subset[var2])
+                    r, p = stats.pearsonr(x,y)
+                    r_z = np.arctanh(r)
+                    se = 1/np.sqrt(x.size-3)
+                    z = stats.norm.ppf(1-alpha/2)
+                    lo_z, hi_z = r_z-z*se, r_z+z*se
+                    lo, hi = np.tanh((lo_z, hi_z))
+                    # 
+                    res['corr']+=[r]
+                    res['p-value']+=[p]
+                    res['low']+=[lo]
+                    res["high"]+=[hi]
+        return eDataFrame(res)
+    
+
+    def prop_test(self, var, var_value,
+                  treat, treat_value, control_value,
+                  group_regexp=None,
+                  alpha=.05,
+                  test = ['chisq', 'z', 't'],
+                  tail='two'):
+        '''
+        Compute test statistics of difference in proportions
+
+        Inputs:
+            var  : string with the outcome variable name to compute proporitons
+            var_value : string/numeric value with value of the outcome 
+                        variable to compute difference between treatment
+                        and control groups
+            treat : string with the name of the treatment variable
+            treat_value : value of the treatment in the var 'treat'
+            control_value : value of the control in the var 'treat'
+            group_regexp  : string for subset the data set using 'query'
+                            function
+            alpha : alpha-level of the test
+            test : string with the test statistics to use (chisq, z, t)
+            tail : string with either 'one' or 'two' 
+            
+        '''
+        assert tail in ['one', 'two'], "'tail' must be either 'one' or 'two'"
+        if group_regexp:
+            tmp = self.query(group_regexp)
+        else:
+            tmp = self
+        tmp = (tmp
+               .query(f"{treat}==['{treat_value}', '{control_value}']")
+               .case_when("y", {
+                   f"{var}=='{var_value}'": f"1",
+                   f"{var}!='{var_value}'": f"0",
+               })
+               .case_when('t', {
+                   f"{treat}=='{treat_value}'": f"1",
+                   f"{treat}=='{control_value}'": f"0",
+               })
+               .filter([var, "y", treat, "t"])
+               .groupby([ "t", "y"])
+               .size()
+               .reset_index(name="n",drop=False)
+        )
+        y1 = float(tmp.loc[(tmp.t==1) & (tmp.y==1), 'n'])
+        n1 = float(tmp.loc[(tmp.t==1) & (tmp.y==0), 'n']) + y1
+        y2 = float(tmp.loc[(tmp.t==0) & (tmp.y==1), 'n'])
+        n2 = float(tmp.loc[(tmp.t==0) & (tmp.y==0), 'n']) + y2
+        p1 = y1/n1
+        p2 = y2/n2
+        sd = np.sqrt( p1*(1-p1)/n1 + p2*(1-p2)/n2 )
+        ATE      = p1 - p2
+        if tail=='two':
+            t = dnorm.ppf(q=1-alpha/2, loc=0, scale=1)
+            # t =  tdist(df).ppf()
+        if tail=='one':
+            t = dnorm.ppf(q=1-alpha, loc=0, scale=1)
+            # t = tdist(df).ppf(1-alpha)
+        # 
+        ATE_low  = ATE - t*sd
+        ATE_high = ATE + t*sd
+        if isinstance(test, list):
+            test = 'chisq'
+        if test == 'chisq':
+            stat_all = prop_chisqtest([y1, y2], [n1, n2])
+            stat   = stat_all[0]
+            pvalue = stat_all[1]
+        return pd.DataFrame({"variable": [var], "variable_value": [var_value],
+                             "group":group_regexp,
+                             'treat_value':[treat_value],
+                             'control_value':[control_value],
+                             "p1":[p1], "p2": [p2],
+                             "ATE":[ATE],
+                             "ATE_low":[ATE_low], "ATE_high":[ATE_high],
+                             "stat": [stat],
+                             'pvalue':[pvalue], 'test':[test]})
+    
+
+    def tab(self, row, col, groups=None,
+            margins=True, normalize='all',#row/columns
+            margins_name='Total', report_format=True, digits=2):
+        '''
+        Create a 2x2 table
+
+        Input
+           row   string with variable name to go to rows
+           col   string with variable name to go to columns
+           groups string or list with variable names to use as grouping variables.
+                  It will generate one 2x2 table per groups
+           margins bool. It True, return the rows and column totals
+           normalize Either 'all', 'row', or 'columns'. Indicate how to 
+                     compute the marginal percentages in each cell
+           margins_name string with the name of the row and column totals
+           report_format bool. If True, return a table with cells that display
+                               the percentages followed by the number of 
+                               cases in each cell.
+        digits integer with the number of digits to use
+        '''
+        vars_row = row
+        vars_col = col
+        tab = self.copy()
+        tab[vars_row] = tab[vars_row].astype(str)
+        tab[vars_col] = tab[vars_col].astype(str)
+        if groups:
+            groups = [groups] if isinstance(groups, str) else groups
+            ngroups=len(groups)
+            resn = tab.__tab_groups__(vars_row, vars_col, normalize=False,
+                                       margins=margins, margins_name=margins_name,
+                                       groups=groups)
+            resp = tab.__tab_groups__(vars_row, vars_col, normalize,
+                                       margins, margins_name, groups)
+        else:
+            ngroups=0
+            resn = tab.__tab__(vars_row, vars_col, normalize=False,
+                                margins=margins, margins_name=margins_name)
+            resp = tab.__tab__(vars_row, vars_col, normalize=normalize,
+                                margins=margins, margins_name=margins_name)
+        colsn=resn.columns[ngroups+1:]
+        colsp=resp.columns[ngroups+1:]
+        res=eDataFrame(resp.iloc[:,0:ngroups+1])
+        if report_format:
+            for coln, colp in zip(colsn, colsp):
+                col = [f"{round(100*p, digits)} % ({n})" for p,n
+                       in zip(resp[colp], resn[coln])]
+                res = res.mutate({coln:col})
+        else:
+            for coln, colp in zip(colsn, colsp):
+                res[coln]=resn[coln]
+                res[str(colp)+"_freq"]=100*resp[colp]
+        # Group columns using varname as label
+        ncat = len(tab[vars_col].unique())
+        ngroups = 0 if not groups else len(groups)
+        col_groups = ['']*(ngroups+1) + [vars_col]*ncat+['']
+        col_ix = pd.MultiIndex.from_arrays([col_groups, res.columns])
+        res.columns = col_ix
+        res.columns.names = ['', '']
+        res.columns.name = ''
+        return eDataFrame(res)
+
+
+    def __tab_groups__(self, vars_row, vars_col, normalize,
+                       margins, margins_name, groups):
+        res = (self.
+               groupby(groups)
+               .apply(eDataFrame.__tab__,
+                      vars_row, vars_col, normalize, margins, margins_name)
+               .reset_index(drop=False)
+        )
+        cols = [col for cidx, col in enumerate(list(res.columns) ) if
+                not bool(re.search(pattern='^level_[0-9]$', string=col))]
+        res=res.filter(cols)
+        return eDataFrame(res)
+        
+
+    def tabn(self, vars_row, vars_col, normalize=False, margins=True,
+             margins_name='Total'):
+        res = self.__tab__(vars_row, vars_col, normalize=normalize,
+                           margins=margins, margins_name=margins_name)
+        return eDataFrame(res)
+
+
+    def tabp(self, vars_row, vars_col, normalize="all", margins=True,
+             margins_name='Total'):
+        res = self.__tab__(vars_row, vars_col, normalize=normalize,
+                           margins=margins, margins_name=margins_name)
+        return eDataFrame(res)
+
+
+    def __tab__(self, vars_row, vars_col, normalize='all', margins=True,
+                margins_name='Total'):
+        if normalize=='row':
+            normalize='index'
+        if normalize=='column' or normalize=='col':
+            normalize='columns'
+        res = pd.crosstab(index=[self[vars_row]],
+                          columns=[self[vars_col]],
+                          margins=margins, margins_name=margins_name,
+                          normalize=normalize)
+        res = res.reset_index(drop=False)
+        return res
+
+
+
+    def balance(self, vars, balance_on, include_summary=True,
+                concise=True, estimand="ATT"):
+        '''
+        Compute balance of variables given the treatment
+
+        Input 
+        -----
+        vars  : str, list or dict with the name of the variables to check
+                balance. See pandasci.eDataFrame.select_cols
+
+        balance_on : string with the name of the variable to compare
+                     if the variables specified in 'vars' are balanced
+                     in the levels of the variable specified in balance_on 
+        
+        estimand : 'ATT' of 'ATE'. See MatchIt help
+        
+        include_summary : boolean. If True, include overall summary of the 
+                          variables in 'vars'
+        
+        concise  : boolean. If True, omit some balance statistics (e.g.
+                   Var Ratio, eCDF Mean, etc.)
+
+        Output 
+        ------
+        eDataFrame with balance summaries
+
+        '''
+        # Temporarily using R to compute balance
+        import rpy2.robjects as robj
+        from rpy2.robjects import pandas2ri, r
+        from rpy2.robjects.packages import importr
+        pandas2ri.activate()
+        base = importr("base")
+        match = importr("MatchIt")
+
+        # 
+        if isinstance(vars, str):
+            vars = [vars]
+        if isinstance(vars, list):
+            X = [f"`{x}`" for x in vars]
+            X = " + ".join(X)
+            vars = vars + [balance_on]
+        elif isinstance(vars, dict) and isinstance(balance_on, str):
+            X = [f"`{x}`" for x in list(vars.values())]
+            X = " + ".join(X)
+            vars = vars | {balance_on:balance_on}
+        else:
+            raise TypeError("Check accepted formats for parameter 'vars'")
+        # 
+        tab = self.select_cols(names=vars).drop_rows(dropna=True)
+        # 
+        f = robj.Formula(f"`{balance_on}` ~ {X}")
+        mat = match.matchit(f, data=tab,
+                            distance='mahalanobis',
+                            method = robj.NULL,
+                            exact = robj.NULL,
+                            estimand = estimand,
+                            caliper = robj.NULL,
+                            std_caliper = True)
+        res = r.summary(mat)
+        res = base.as_data_frame(res.rx['sum.all']).reset_index(drop=False)
+        res = (
+            eDataFrame(res)
+            .rename_cols(regex={'sum.all.':'',
+                                '\.\.':'.',
+                                '\.*$':'',
+                                '\.':' '})
+            .rename_cols(columns={'index':'variable'})
+        )
+        if include_summary:
+            res = self.summary(vars=vars).join(res, how='left')
+        if concise:
+            res= res.drop_cols(names=['Missing', 'Var Ratio', 'eCDF Mean',
+                                      'eCDF Max', 'Std Pair Dist'])
+        return res
+
+
+
+    # =====================================================
+    # Utilities
+    # =====================================================
+    def names(self, regexp=None, print_long=False):
+        names = list(self)
+        if regexp:
+            names = [nm for nm in names if
+                     bool(re.search(pattern=regexp, string=nm))]
+        if print_long:
+            for col in names:
+                print(col)
+        if not names:
+            print("\nNo column name matches the regexp!\n")
+        return names
+            
+
+    def to_org(self, round=4):
+        res = self
+        if round:
+            res = res.round(round)
+        s = res.to_csv(sep='|', index=False).replace('\n', ' | \n | ')
+        s = re.sub(pattern="^", repl="|", string=s)
+        s = re.sub(pattern=".$", repl="", string=s)
+        print(s)
+
+    
+    def flatten_columns(self, sep='_'):
+        'Flatten a hierarchical index'
+        assert isinstance(self.columns, pd.MultiIndex), "Not a multiIndex"
+        self = (self.reset_index(drop=True))
+        def _remove_empty(column_name):
+            return tuple(element for element in column_name if element)
+        def _join(column_name):
+            column_name = [str(col) for col in column_name]
+            return sep.join(column_name)
+        new_columns = [_join(_remove_empty(column)) for column in
+                       self.columns.values]
+        self.columns = new_columns
+        return self
+
+
+    def flatten(self, drop=True):
+        ngroups=len(self.index.codes)
+        idx = self.index.codes[ngroups-1]
+        res=self.reset_index(drop=drop).set_index(idx).sort_index()
+        return res
 
 
     def tolatex(self, fn=None, na_rep="", table_env=True,
@@ -1901,16 +2747,86 @@ class eDataFrame(pd.DataFrame):
         pd.set_option('display.max_colwidth', pdcolw)
         return tab
         
+    def t(self):
+        res = self.transpose().reset_index(drop=False)
+        res.columns = res.iloc[0].values
+        res = res.iloc[1:,].reset_index(drop=True)
+        return eDataFrame(res)
+
+
+    def toexcel(self, fn=None, sheet_name=None, index=False, **kws):
+        '''
+        Save eDataFrame to excel
+
+        Input
+    	-----
+           sheet_name  : string (default None) with the name of the sheet
+                         to save the content. If None, use the first
+                         sheet and overwrite the file
+           index  : boolean, if False, do not save the row index in a column
+           **kws  : see pd.to_excel 
+
+        '''
+        fn = os.path.expanduser(fn)
+        if not sheet_name:
+            self.to_excel(fn=fn, index=index, **kws)
+        else:
+            # with pd.ExcelWriter(path=fn, engine='xlsxwriter') as writer:
+            #     self.to_excel(writer,
+            #                   sheet_name=sheet_name,
+            #                   index=index,
+            #                   **kws)
+            #     # writer.save()
+            excel_book = pxl.load_workbook(fn)
+            with pd.ExcelWriter(fn, engine='openpyxl') as writer:
+                writer.book = excel_book
+                writer.sheets = {worksheet.title: worksheet for worksheet in
+                                 excel_book.worksheets}
+                self.to_excel(writer,
+                              sheet_name=sheet_name,
+                              index=index,
+                              **kws)
+                writer.save()
+
+
+    # =====================================================
+    # Utilities (ancillary)
+    # =====================================================
+    def __wrap_var__(self, var, wrap=None):
+        # 
+        wascat=False
+        if wrap:
+            if self[var].values.dtype== 'category':
+                wascat=True
+                ordered=self[var].cat.ordered
+                cats = self[var].cat.categories.values
+                cats = [textwrap.fill(cat, wrap)  for cat in cats]
+            self=self.mutate({var: lambda x: x[var].str.wrap(wrap)})
+            if wascat:
+                self=(
+                   self
+                   .mutate({var: lambda x: pd.Categorical(x[var],
+                                                          categories=cats,
+                                                          ordered=ordered
+                                                          )})) 
+        return self
+
+
 
     # =====================================================
     # Plots
     # =====================================================
+    def plot(self, type, **kws):
+        #TBD
+        pass
+    
     # =====================================================
     # Scatter plot
     # =====================================================
     def plot_scatter(self, x, y, **kwargs):
-        self.plot_line(x, y, kind='scatter', pts_show=True, **kwargs)
+        ax, axl = self.plot_line(x, y, kind='scatter', pts_show=True, **kwargs)
         plt.tight_layout()
+        return ax, axl
         
     # =====================================================
     # Line Plot
@@ -1995,7 +2911,8 @@ class eDataFrame(pd.DataFrame):
                          facet_kws={'sharey': facet_sharey,
                                     'sharex': facet_sharey},
                          palette=palette,
-                         data=self)
+                         data=self,
+                         )
         # Legend
         # ------
         if colors or linetype:
@@ -2010,6 +2927,7 @@ class eDataFrame(pd.DataFrame):
                 if not leg_xpos:
                     leg_xpos = 0
             ax.legend.remove()
+            # this line is giving error when using facet_y, colors !!!
             axc=ax.axes[0][0]
             leg = axc.legend(loc=leg_pos, bbox_to_anchor=(leg_xpos, leg_ypos),
                              handlelength=1.5,
@@ -2068,7 +2986,8 @@ class eDataFrame(pd.DataFrame):
               "1. The axis of the entire figure\n"+\
               "2. The axes for each facet in a list\n\n")
         plt.tight_layout()
-        return ax, it.chain(*ax.axes)
+        # return ax, it.chain(*ax.axes)
+        return ax, ax.axes.flatten()
 
 
     # =====================================================
@@ -2375,7 +3294,12 @@ class eDataFrame(pd.DataFrame):
     # =====================================================
     # Histogram
     # =====================================================
-    def plot_hist(self, var, group=None, facet=None, ax=None, **kws):
+    def plot_hist(self, var, groups=None, discrete=False,
+                  xtickslabel_wrap=None, 
+                  xtickslabel_fontsize=None,
+                  ytickslabel_wrap=None, 
+                  ytickslabel_fontsize=None,
+                  facet=None, ax=None, **kws):
         '''
         Plot a histogram 
         
@@ -2387,6 +3311,7 @@ class eDataFrame(pd.DataFrame):
                  use as facet
            ax    a matplotlib subplot object to plot. If none, the function
                  creates a fugure and the subplots
+           multiple used when groups are used. See sns.histplot
            # kws:
            #   - legend keywords:
            #     - legend_title      : string
@@ -2403,54 +3328,443 @@ class eDataFrame(pd.DataFrame):
            # facets are used
         '''
         bin_labels=kws.get('bin_labels', True)
+        if xtickslabel_wrap:
+            self=self.__wrap_var__(var, wrap=xtickslabel_wrap)
         if not facet:
             if not ax:
                 fig, ax = self.__create_figure__(nrow=1, ncol=1, **kws)
-            self.__plot_hist_main__(ax, var, **kws)
+            self.__plot_hist_main__(ax, var, discrete=discrete, groups=groups,
+                                    **kws)
         if bin_labels:
             self.__plot_hist_bin_labels__(ax, **kws)
+        grid_which=kws.get("grid_which", 'major')
+        grid_axis = kws.get("grid_axis", 'y')
+        grid_linetype = kws.get("grid_linetype", '-')
+        grid_alpha = kws.get("grid_alpha", .3)
+        self.__plot_grid__(ax,
+                           grid_which=grid_which, grid_axis= grid_axis,
+                           grid_linetype= grid_linetype,
+                           grid_alpha= grid_alpha)
+        self.__plot_yticks__(ax)
+        self.__plot_border__([ax])
+        if xtickslabel_fontsize:
+            ax.xaxis.set_tick_params(labelsize=xtickslabel_fontsize)
         return ax
             
+    
+        
+    # Density plot 
+    # ------------
+    # def plot_density(self, var, ax=None, **kws):
+    #     if not ax:
+    #         fig, ax = self.__create_figure__(nrow=1, ncol=1, **kws)
+    #     sns.kdeplot(data=self, x=var, ax=ax,
+    #                 fill=True, common_norm=False, palette="crest",
+    #                 alpha=.5, linewidth=0, **kws)
+    #     # grid
+    #     ax.grid(b=None, which='major', axis='both', linestyle='-', alpha=.3)
+    #     ax.set_axisbelow(True) # to put the grid below the plot
+    #     # -------
+    #     # Splines (axes lines)
+    #     # -------
+    #     ax.spines['bottom'].set_visible(True)
+    #     ax.spines['left'].set_visible(False)
+    #     ax.spines['right'].set_visible(False)
+    #     ax.spines['top'].set_visible(False)
+    #     # ax.spines['bottom'].set_position(('data', 0))
+    #     # ax.spines['bottom'].set_linestyle('-')
+    #     # ax.spines['bottom'].set_linewidth(3)
+    #     # ax.spines['bottom'].set_smart_bounds(True)
+    #     return ax
+    def plot_density(self, var=None, group=None,
+                     facet={'col':None, 'row':None},
+                     cmap='dark',
+                     leg_title=None, leg_title_size=13, leg_ncol=None,
+                     # 
+                     rug=True, info=True, info_reduced=True,
+                     fill_range=None,
+                     grid=True,
+                     # 
+                     title_size=13,
+                     # 
+                     height=5, width=2.5,
+                     kws_kde=None, kws_fill=None,
+                     kws_grid=None,
+                     kws=None
+                     ):
+        '''
+        Density plot
+
+        Input
+        -----
+           var    : string with column to plot
+           group  : string with the column with groups to plot separate densities
+           facet  : dict {"col":<col name>, "row":<row names>}. One or both
+                    can be omitted. Ex: it accepts {'col':<col name>}
+
+           cmap : color map (see seaborn color map)
+
+           leg_title      : string, title of the legend
+           leg_title_size : integer, size of the title
+           leg_ncol       : integer, number of columns of the legend
+
+           rug    : bool, to plot or not the rug
+           info   : bool, to plot or not text info
+           height : height of the plot
+           width  : width of the plot
+
+           kws_kde : dict, kde kws (see seaborn kde)
+           kws_fill : dict, infor to fill the plot (color)
+
+        Output
+        ------
+           Returns a seaborn facet object with axes
+        '''
+
+        assert var,"You must inform the 'var'."
+
+        aspect=height/width
+        # 
+        kws_kde=({"alpha": 0.3, "linewidth": 0, "bw_adjust": 3,
+                  "fill":True} if not kws_kde else kws_kde)
+        #80d4ff
+        kws_fill = {
+            "color": "grey",
+            "alpha": 0.5} if not kws_fill else kws_fill
+        # 
+        kws_grid = {"grid_axis":'both', 'grid_linetype':':',
+                    "grid_alpha":.5} if not kws_grid else kws_grid
+        facet=self.__get_facet__(facet)
+        #
+        axs=sns.displot(
+            x=var,
+            data=self,
+            hue=group,
+            kind="kde",
+            col=facet['col'],
+            row=facet['row'],
+            rug=rug,
+            height=height,
+            aspect=aspect,
+            palette=cmap,
+            **kws_kde|kws_fill,
+            # legend=False,
+            # rug_kws=rug_kws,
+        )
+        ## ------
+        ## legend
+        ## ------
+        if group:
+            leg_ncol=len(self[group].unique()) if not leg_ncol else leg_ncol
+            # xpos=0.075 - 0.02*(nfacets_col-1)
+            # ypos=.83   + 0.038*(nfacets_row-1)
+            # xpos=1
+            # ypos=.7
+            sns.move_legend(axs, #loc='lower left',#bbox_to_anchor=(xpos, ypos),
+                            loc='upper right',
+                            handlelength=2,
+                            title=leg_title,
+                            title_fontsize=leg_title_size,
+                            handletextpad=.3, prop={'size':12},
+                            labelspacing=.2, #  vertical space between the legend entries.
+                            columnspacing=1, # spacing between columns
+                            ncol=leg_ncol, mode=None, frameon=False, fancybox=True,
+                            framealpha=0.5, facecolor='white'
+                            )
+            leg=axs.legend
+            leg._legend_box.align = "left"
+        axs.data=self.__plot_get_data_facet__(axs=axs, facet=facet)
+        axsf=axs.axes.flatten()
+        # ----
+        # Grid 
+        # ----
+        if grid:
+            for axc in axsf:
+                if not kws_grid:
+                    kws_grid={"grid_alpha":.2}
+                self.__plot_grid__(ax=axc, **kws_grid)
+        ## ----
+        ## Info
+        ## ---- 
+        if info:
+            self.__plot_density_info__(axs=axs, var=var, group=group,
+                                       cmap=cmap,
+                                       info_reduced=info_reduced,
+                                       leg_title=leg_title,
+                                       leg_title_size=leg_title_size,
+                                       leg_ncol=leg_ncol)
+        ## -----
+        ## title
+        ## ----- 
+        axs.set_titles('',loc='center')
+        axs.set_titles(row_template = '{row_name}',
+                      col_template = '{col_name}',
+                      loc='left',
+                      weight='bold',
+                      size=title_size,
+                      )
+        self.__plot_border__(axsf)
+        plt.tight_layout()
+        return  axs
+
+    def __plot_density_info__(self, axs=None,
+                              var=None,
+                              group=None,
+                              cmap=None,
+                              info_reduced=None,
+                              leg_title=None,
+                              leg_title_size=13,
+                              leg_ncol=None,
+                              ):
+        nfacets=len(axs.data.items())
+        nfacets_row, nfacets_col=axs.axes.shape
+        # 
+        group_flag=True if group else False
+        for facet, info in axs.data.items():
+            if not group_flag:
+                group=None
+            tab=info['data']
+            axc=info['ax']
+            # 
+            if var=='group':
+                tab=tab.rename_cols(columns={var:'var'})
+                var='var'
+            if not group_flag:
+                tab=tab.mutate({"group": var})
+                group='group'
+            for i, gi in enumerate(tab[group].unique()):
+                tab=tab.mutate({group: lambda x: x[group].astype(str)})
+                xi, n = tab.__density_get_group_data__(var,
+                                                       group_var=group,
+                                                       group_value=gi)
+                n=self.nrow/nfacets
+                prop_gi = len(xi)/n/nfacets
+                scale_density=prop_gi
+                # 
+                mean = float(np.mean(xi))
+                median=float(np.median(xi))
+                # print(group, flush=True)
+                # print(gi, flush=True)
+                # print(xi, flush=True)
+                # print("ok", flush=True)
+                # print(np.min(xi), flush=True)
+                min = float(np.min(xi))
+                max = float(np.max(xi))
+                std = float(sp.stats.tstd(xi))
+                sk=float(sp.stats.skew(xi))
+                kt=float(sp.stats.kurtosis(xi))
+                # 
+                label=f"Mean ($\mu$)" if i==0 else None
+                ymax=sp.stats.gaussian_kde(xi).pdf(mean)*scale_density
+                axc.vlines(
+                    x=mean,
+                    ymin=0,
+                    ymax=ymax,
+                    ls="solid",
+                    color=sns.color_palette(cmap)[i],
+                    alpha=1,
+                    lw=1.5,
+                    label=label,
+                )
+                if not info_reduced:
+                    label=f"Median" if i==0 else None
+                    ymax=sp.stats.gaussian_kde(xi).pdf(median)*scale_density
+                    axc.vlines(
+                        x=median,
+                        ymin=0,
+                        ymax=ymax,
+                        ls="--",
+                        color=sns.color_palette(cmap)[i],
+                        alpha=1,
+                        lw=1.5,
+                        label=label,
+                    )
+                    ymax=[sp.stats.gaussian_kde(xi).pdf(mean-std)*scale_density,
+                          sp.stats.gaussian_kde(xi).pdf(mean+std)*scale_density]
+                    axc.vlines(
+                        x=[mean - std, mean + std],
+                        ymin=0,
+                        ymax=ymax,
+                        ls=":",
+                        color=sns.color_palette(cmap)[i],
+                        label="\u03BC \u00B1 \u03C3" if i==0 else None,
+                    )
+                # ----------------------
+                # Annotations and legend
+                # ----------------------
+                xpos= 0.017
+                ypos= 0.95#-.1*(leg_ncol-1)
+                xpos_col_space=8
+                xpos_col_space_additional=1
+                axc.text(
+                    xpos*(xpos_col_space*i+xpos_col_space_additional),
+                    ypos,
+                    f"Mean: {mean:.2f}",
+                    # fontdict=font_kws,
+                    color=sns.color_palette(cmap)[i],
+                    transform=axc.transAxes,
+                )
+                axc.text(
+                    xpos*(xpos_col_space*i+xpos_col_space_additional),
+                    ypos-.05,
+                    f"Std. dev: {std:.2f}",
+                    # fontdict=font_kws,
+                    color=sns.color_palette(cmap)[i],
+                    transform=axc.transAxes,
+                )
+                axc.text(
+                    xpos*(xpos_col_space*i+xpos_col_space_additional),
+                    ypos-.1,
+                    f"Median: {median:.2f}",
+                    # fontdict=font_kws,
+                    color=sns.color_palette(cmap)[i],
+                    transform=axc.transAxes,
+                )
+                axc.text(
+                    xpos*(xpos_col_space*i+xpos_col_space_additional),
+                    ypos-.15,
+                    f"Min.: {min:.2f}",
+                    # fontdict=font_kws,
+                    color=sns.color_palette(cmap)[i],
+                    transform=axc.transAxes,
+                )
+                axc.text(
+                    xpos*(xpos_col_space*i+xpos_col_space_additional),
+                    ypos-.2,
+                    f"Max.: {max:.2f}",
+                    # fontdict=font_kws,
+                    color=sns.color_palette(cmap)[i],
+                    transform=axc.transAxes,
+                )
+                axc.text(
+                    xpos*(xpos_col_space*i+xpos_col_space_additional),
+                    ypos-.25,
+                    f"Skew: {sk:.2f}",
+                    # fontdict=font_kws,
+                    color=sns.color_palette(cmap)[i],
+                    transform=axc.transAxes,
+                )
+                axc.text(
+                    xpos*(xpos_col_space*i+xpos_col_space_additional),
+                    ypos-.3,
+                    f"Kurtosis: {kt:.2f}",  # Excess Kurtosis
+                    # fontdict=font_kws,
+                    color=sns.color_palette(cmap)[i],
+                    transform=axc.transAxes,
+                )
+                axc.text(
+                    xpos*(xpos_col_space*i+xpos_col_space_additional),
+                    ypos-.35,
+                    f"Counts: {len(xi)}",
+                    # fontdict=font_kws,
+                    color=sns.color_palette(cmap)[i],
+                    transform=axc.transAxes,
+                )
+                leg=axc.legend(loc="lower left")
+                leg._legend_box.align = "left"
+
+
+    def __plot_get_data_facet__(self, axs, facet):
+        res={}
+        if not axs.axes_dict:
+            res[None]={'data':self, 'ax':axs.axes[0, 0]}
+        else:
+            for facet_cat, axc in axs.axes_dict.items():
+                if isinstance(facet_cat, tuple):
+                    row=facet_cat[0]
+                    col=facet_cat[1]
+                    cases=f"({facet['col']}=='{col}') and ({facet['row']}=='{row}')"
+                    tab= self.select_rows(query=cases)
+                else:
+                    if facet['col']:
+                        cases=f"({facet['col']}=='{facet_cat}')"
+                    else:
+                        cases=f"({facet['row']}=='{facet_cat}')"
+                    tab= self.select_rows(query=cases)
+                res[facet_cat]={'data':tab, 'ax':axc}
+        return res
+
+
+    def __density_get_group_data__(self, var, group_var, group_value):
+        xi=(
+            self
+            .select_rows(query=f"{group_var}=='{group_value}'")
+            .select_cols(names=var)
+            .values
+            .flatten()
+        )
+        n=self.nrow
+        return xi, n
+
+    def __get_facet__(self, facets):
+        facets_res = {'col':None, 'row':None}
+        if facets:
+            for k, v in facets.items():
+                facets_res[k]=v
+        return facets_res
+
+
+
+
+
+
     def __plot_hist_bin_labels__(self, ax, **kws):
         bin_labels_color=kws.get('bin_labels_color', 'black')
         bin_labels_ha=kws.get('bin_labels_ha', 'center')
         bin_labels_va=kws.get('bin_labels_va', 'bottom')
         bin_labels_fontsize=kws.get('bin_labels_fontsize', None)
         bin_labels_round=kws.get('bin_labels_round', 2)
-        zorder=kws.get('zorder', 0)
         s=0
         for p in ax.patches:
             s+= p.get_height()
         for p in ax.patches: 
-            label=f'{round(p.get_height()/s, bin_labels_round)}'
-            ax.text(p.get_x() + p.get_width()/2.,
-                    p.get_height(),
-                    label, 
-                    fontsize=bin_labels_fontsize,
-                    color=bin_labels_color,
-                    ha=bin_labels_ha,
-                    va=bin_labels_va,
-                    zorder=zorder
-                    )
+            if p.get_height()>0:
+                label=f'{round(p.get_height()/s, bin_labels_round)}'
+                ax.text(p.get_x() + p.get_width()/2.,
+                        p.get_height(),
+                        label, 
+                        fontsize=bin_labels_fontsize,
+                        color=bin_labels_color,
+                        ha=bin_labels_ha,
+                        va=bin_labels_va,
+                        zorder=1,
+                        )
 
-    def __plot_hist_main__(self, ax, var, **kws):
+    def __plot_hist_main__(self, ax, var, discrete, **kws):
         border_color=kws.get('border_color', 'white')
         alpha=kws.get('alpha', .7)
+        color=kws.get('color', None)
+        kde=kws.get('density', False)
+        kde_kws=kws.get('kde_kws', None)
         linewidth=kws.get('linewidth', 2)
         stat=kws.get('stat', 'probability')
-        zorder=kws.get('zorder', 0)
         ylim = kws.get("ylim", None)
         bins = kws.get("bins", 'auto')
-        # =kws.get('', '')
-        sns.histplot(self[var],
-                     alpha=alpha,
-                     bins=bins,
-                     edgecolor=border_color,
-                     linewidth=linewidth,
-                     zorder=zorder,
-                     stat=stat)
+        groups=kws.get("groups", None)
+        multiple=kws.get("multiple", None)
+        #
+        if groups and not multiple:
+            multiple='dodge'
+        elif not groups and not multiple:
+            multiple='layer'
+        sns.histplot(data=self.drop_rows(dropna=var),
+                        x=var,
+                        alpha=alpha,
+                        bins=bins,
+                        edgecolor=border_color,
+                        color=color,
+                        linewidth=linewidth,
+                        hue=groups,
+                        multiple=multiple,
+                        stat=stat,
+                        discrete=discrete,
+                        kde=kde,
+                        kde_kws=kde_kws,
+                        zorder=1,
+                        ax=ax)
         if ylim:
             ax.set_ylim(ylim)
+
 
     # =====================================================
     # Plot table
@@ -2494,6 +3808,407 @@ class eDataFrame(pd.DataFrame):
         gtab.set_fontsize(fontsize)
         return ax
 
+    # Plot correlation
+    # ----------------
+    def plot_corr(self, vars=None, sig=False, legend=False, cmap='coolwarm',
+                  size=8, ax=None):
+        '''
+        Plot correlation matrix
+
+        Input
+    	-----
+           vars  : list with variables to plot. If None, plot all variables.
+           sig  : boolean, if True plot stars with significance-level (default False)
+           legend  : If True, plot legend (default False)
+           cmap    : color map to use
+           size    : font size
+
+        Output
+    	------
+           Plot with correlation matrix
+        '''
+        if not vars:
+            vars = self.names()
+        cor=self.corr_pairwise(vars, long_format=False)
+        if sig:
+            pval = (
+                self
+                .select_cols(names=vars)
+                .corr(method=lambda x, y:
+                      stats.pearsonr(x, y)[1]) - np.eye(*cor.shape)
+            )
+            p = pval.applymap(lambda x: ''.join(['*' for t in [0.01, 0.05, 0.1]
+                                                 if x<=t]))
+            cor = cor.round(2).astype(str) + "\n" + p
+        mask = np.zeros_like(cor, dtype=bool)
+        mask[np.triu_indices_from(mask)]= True
+        if not ax:
+            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=[8, 6], tight_layout=True)
+        heatmap = sns.heatmap(cor, 
+                              mask = mask,
+                              # square = True,
+                              linewidths = .5,
+                              cbar = False,
+                              cmap = cmap,
+                              cbar_kws = {'shrink': .6, 
+                                          'ticks' : [-1, -.5, 0, 0.5, 1]},
+                              vmin = -1, 
+                              vmax = 1,
+                              annot = True,
+                              annot_kws = {"size": size},
+                              ax=ax
+                              )
+        return heatmap
+
+
+
+    # plot statistics with std. error 
+    # -------------------------------
+    def plot_coef(self, x, y, se=None, model_id=None, 
+                  xlab=None, ylab=None,
+                  remove_intercept='Intercept',
+                  colors=None,
+                  shapes=None,
+                  size=None,
+                  dodge=0.05,
+                  # h/vlines
+                  # --------
+                  hline=0,
+                  hline_style='--',
+                  hline_color='red',
+                  hline_width=1,
+                  # 
+                  vline=0,
+                  vline_style='--',
+                  vline_color='red',
+                  vline_width=1,
+                  # 
+                  # facet 
+                  # -----
+                  facet_x=None,
+                  facet_y=None,
+                  facet_ncols=None,
+                  facet_nrows=None,
+                  facet_sharey=True,
+                  facet_sharex=True,
+                  facet_fontsize=11,
+                  facet_alpha=.7,
+                  facet_fontweight='bold',
+                  facet_yoffset=0,
+                  # legend 
+                  # ------
+                  leg_pos='upper left',
+                  leg_pos_manual=None,
+                  leg_ncol=1,
+                  leg_fontsize=10,
+                  leg_title=None,
+                  leg_facet=None,
+                  # 
+                  kws_grid={},
+                  kws_border={},
+                  # 
+                  figsize=None,
+                  ax=None):
+        '''
+        
+        Input
+        -----
+        leg_facet  : integer, the facet to plot the legend. In case of 
+                     multiple rows and cols, facets are ordered left-right and 
+                     top-bottom starting at zero. If None, all facets
+                     will display their legend
+                  
+        
+        '''
+        if facet_x:
+            cats_x=self[facet_x].unique()
+            ncats_x=len(cats_x)
+            if not facet_ncols:
+                facet_ncols=len(self[facet_x].unique())
+            elif facet_ncols>ncats_x:
+                facet_ncols=ncats_x
+            elif facet_ncols<ncats_x and not facet_nrows:
+                facet_nrows=np.ceil(ncats_x/facet_ncols)
+        # 
+        if facet_y:
+            cats_y=self[facet_y].unique()
+            ncats_y=len(cats_y)
+            if not facet_nrows:
+                facet_nrows=len(self[facet_y].unique())
+            elif facet_nrows>ncats_y:
+                facet_nrows=ncats_y
+            elif facet_nrows<ncats_y and not facet_ncols:
+                facet_ncols=int(np.ceil(ncats_y/facet_nrows))
+        # 
+        if facet_x and facet_y:
+            cats_x=self[facet_x].unique()
+            ncats_x=len(cats_x)
+            cats_y=self[facet_y].unique()
+            ncats_y=len(cats_y)
+            facet_nrows=ncats_y
+            facet_ncols=ncats_x
+        # 
+        # check if inverted or not
+        covars_on_xaxis=False if dict(self.dtypes)[x]==float else True
+        ncovars=len(self[x].unique()) if covars_on_xaxis else len(self[y].unique())
+        # 
+        if not figsize:
+            if covars_on_xaxis:
+                figsize=[10, 6]
+            else:
+                figsize=[9, 10]
+        if not ax:
+            fig, ax = self.__create_figure__(
+                figsize=figsize,
+                nrows=facet_nrows if facet_nrows else 1, 
+                ncols=facet_ncols if facet_ncols else 1,
+                sharex=facet_sharex,
+                sharey=facet_sharey,
+            )
+        # 
+        args=locals()
+        args.pop('self')
+        args.pop('ax')
+        args["covars_on_xaxis"]=covars_on_xaxis
+        args["ncovars"]=ncovars
+        # 
+        if not facet_x and not facet_y:
+            self.__plot_coef_main__(**args, ax=ax, facet=0)
+        # 
+        # facets 
+        # ------
+        xcoord=0
+        ycoord=1.13+facet_yoffset
+        yoffset=.07
+        if facet_x and not facet_y:
+            for i, cat_x in enumerate(cats_x):
+                axc=ax[i]
+                tab=self.select_rows(query=f"{facet_x}=='{cat_x}'")
+                axc=tab.__plot_coef_main__(**args, ax=axc, facet=i)
+                plt.subplots_adjust(top=.78)
+                axc.annotate(cat_x, xy=(xcoord, ycoord),
+                             xytext=(xcoord, ycoord),
+                             xycoords='axes fraction',
+                             # 
+                             fontweight=facet_fontweight,
+                	     size=facet_fontsize,
+                             alpha=facet_alpha
+                             )
+        # 
+        if not facet_x and facet_y:
+            for i, cat_y in enumerate(cats_y):
+                axc=ax[i]
+                tab=self.select_rows(query=f"{facet_y}=='{cat_y}'")
+                axc=tab.__plot_coef_main__(**args, ax=axc, facet=i)
+                plt.subplots_adjust(top=.78)
+                axc.annotate(cat_y, xy=(xcoord, ycoord),
+                             xytext=(xcoord, ycoord), xycoords='axes fraction',
+                             # 
+                             fontweight=facet_fontweight,
+                	     size=facet_fontsize,
+                             alpha=facet_alpha
+                             )
+        # 
+        if facet_x and facet_y:
+            faceti=0
+            for j, cat_y in enumerate(cats_y):
+                for i, cat_x in enumerate(cats_x):
+                    axc=ax[faceti]
+                    query=f"({facet_x}=='{cat_x}') and ({facet_y}=='{cat_y}')"
+                    tab=self.select_rows(query=query)
+                    axc=tab.__plot_coef_main__(**args, ax=axc, facet=faceti)
+                    plt.subplots_adjust(top=.78)
+                    cat=f"{cat_x} and {cat_y}"
+                    axc.annotate(cat, xy=(xcoord, ycoord),
+                                 xytext=(xcoord, ycoord),
+                                 xycoords='axes fraction',
+                                 # 
+                                 fontweight=facet_fontweight,
+                	         size=facet_fontsize,
+                                 alpha=facet_alpha
+                                 )
+                    faceti+=1
+        # 
+        return ax
+
+
+
+    def __plot_coef_main__(self, **kws):
+        ax=kws.get("ax")
+        width=0.25
+        x= kws.get("x")
+        y= kws.get("y")
+        model_id= kws.get("model_id")
+        se= kws.get("se", 7)
+        remove_intercept= kws.get("remove_intercept")
+        xlab= kws.get("xlab")
+        ylab= kws.get("ylab")
+        hline= kws.get("hline")
+        hline_style= kws.get("hline_style")
+        hline_color= kws.get("hline_color")
+        hline_width= kws.get("hline_width")
+        vline= kws.get("vline")
+        vline_style= kws.get("vline_style")
+        vline_color= kws.get("vline_color")
+        vline_width= kws.get("vline_width")
+        shapes= kws.get("shapes")
+        colors= kws.get("colors")
+        size= kws.get("size", 7)
+        dodge= kws.get("dodge")
+        leg_pos=kws.get("leg_pos")
+        leg_pos_manual=kws.get("leg_pos_manual")
+        leg_ncol=kws.get("leg_ncol")
+        leg_fontsize=kws.get("leg_fontsize")
+        leg_title=kws.get("leg_title")
+        leg_facet=kws.get("leg_facet")
+        # 
+        covars_on_xaxis=kws.get("covars_on_xaxis")
+        ncovars=kws.get("ncovars")
+        # 
+        kws_grid=kws.get("kws_grid")
+        kws_border=kws.get("kws_grid")
+        #
+        facet=kws.get("facet")
+
+        # 
+        assert se, 'Standard error (se) must be provided!'
+        # 
+        # to handle more than one model
+        model_id_colname="___model_id___"
+        if not model_id:
+            model_id_informed=False
+            self=self.mutate({model_id_colname: model_id_colname})
+        else:
+            model_id_informed=True
+            self=self.rename_cols(columns={model_id:model_id_colname})
+
+        if remove_intercept:
+            self=self.drop_rows(regex=remove_intercept)
+
+        # 
+        if not leg_facet and not isinstance(leg_facet, int):
+            leg_facet=facet
+
+        mods = self[model_id_colname].unique()
+        nmods = len(mods)
+        #
+        # dogdge
+        dodges=np.linspace(0-dodge*(nmods-1), 0+dodge*(nmods-1), nmods)
+        # 
+
+        shapes_used=True if shapes else False
+        shapes = ['o']*nmods if not shapes else shapes
+        shapes = [shapes]*nmods if not isinstance(shapes, list) else shapes
+
+        if not colors:
+            colors_used=False
+            colors=[col for name, col in mcolors.TABLEAU_COLORS.items()]
+        colors = [colors]*nmods if not isinstance(colors, list) else colors
+        # 
+        leg_elements={'labels':[],
+                      'shapes':[],
+                      'colors':[]}
+        for i, mod in enumerate(mods):
+            modi = self.select_rows(query=f"{model_id_colname}=='{mod}'")
+            # modi = modi.set_index(x).reindex(self[x].unique())
+
+            if covars_on_xaxis:
+                yerror=modi[se]
+                xerror=None
+                trans = Affine2D().translate(dodges[i], 0.0) + ax.transData
+            else:
+                xerror=modi[se]
+                yerror=None
+                trans = Affine2D().translate(0.0, dodges[i]) + ax.transData
+
+            ax.errorbar(x=modi[x], y=modi[y], yerr=yerror, xerr=xerror,
+                        ls='none',
+                        color=colors[i],
+                        # markers
+                        marker=shapes[i],
+                        markersize=size,
+                        # 
+                        transform=trans
+                        )
+            ax.set_xlabel(xlab)
+            ax.set_ylabel(ylab)
+            # 
+            if ((isinstance(hline, int) or isinstance(hline, float)) and
+                covars_on_xaxis):
+                ax.axhline(y=hline,
+                           linestyle=hline_style,
+                           color=hline_color, linewidth=hline_width)
+            if ((isinstance(vline, int) or isinstance(vline, float)) and
+                not covars_on_xaxis):
+                ax.axvline(x=vline,
+                           linestyle=vline_style,
+                           color=vline_color, linewidth=vline_width)
+
+            leg_elements['labels']+=[mod]
+            leg_elements['shapes']+=[shapes[i]]
+            leg_elements['colors']+=[colors[i]]
+
+        if (shapes_used or colors_used or model_id_informed) and leg_facet==facet:
+            if leg_pos=='top' and not leg_pos_manual:
+                leg_pos_manual=(0.5, 1.01)
+            # ## finally, build customized legend
+            legend_elements = [Line2D([0], [0],
+                                      marker=leg_elements['shapes'][i],
+                                      label=leg_elements['labels'][i],
+                                      color = leg_elements['colors'][i],
+                                      markersize=8) for i, m in enumerate(shapes)]
+            # _ = ax.legend(handles=legend_elements, loc=2,
+            #               prop={'size': 15},
+            #               labelspacing=1.2)
+            # handles, labels = ax.get_legend_handles_labels()
+            if leg_pos_manual:
+                leg = ax.legend(loc='lower left',
+                                handles=legend_elements, 
+                                bbox_to_anchor=leg_pos_manual, handlelength=2,
+                                title=leg_title,
+                                handletextpad=.3, prop={'size':leg_fontsize},
+                                # pad between the legend handle and text
+                                labelspacing=.3, #  vertical space between the legend entries.
+                                columnspacing=1, # spacing between columns
+                                # handlelength=1, #  length of the legend handles
+                                ncol=leg_ncol, mode=None, frameon=False, fancybox=True,
+                                framealpha=0.5, facecolor='white')
+            else:
+                leg = ax.legend(loc=leg_pos, handlelength=2,
+                                handles=legend_elements, 
+                                title=leg_title,
+                                handletextpad=.3, prop={'size':leg_fontsize},
+                                # pad between the legend handle and text
+                                labelspacing=.3, #  vertical space between the legend entries.
+                                columnspacing=1, # spacing between columns
+                                # handlelength=1, #  length of the legend handles
+                                ncol=leg_ncol, mode=None, frameon=False, fancybox=True,
+                                framealpha=0.5, facecolor='white')
+            leg._legend_box.align = "left"
+        # Annotation
+        # ----------
+        #     fs = 16
+        #     ax.annotate('Control', xy=(0.3, -0.2), xytext=(0.3, -0.35), 
+        #                 xycoords='axes fraction', 
+        #                 textcoords='axes fraction', 
+        #                 fontsize=fs, ha='center', va='bottom',
+        #                 bbox=dict(boxstyle='square', fc='white', ec='black'),
+        #                 arrowprops=dict(arrowstyle='-[, widthB=6.5, lengthB=1.2', lw=2.0, color='black'))
+
+        #     ax.annotate('Study', xy=(0.8, -0.2), xytext=(0.8, -0.35), 
+        #                 xycoords='axes fraction', 
+        #                 textcoords='axes fraction', 
+        #                 fontsize=fs, ha='center', va='bottom',
+        #                 bbox=dict(boxstyle='square', fc='white', ec='black'),
+        #                 arrowprops=dict(arrowstyle='-[, widthB=3.5, lengthB=1.2', lw=2.0, color='black'))
+        ax.tick_params(top=None, bottom=None, left=None, right=None)
+        if not kws_grid:
+            kws_grid['grid_axis']='x' if covars_on_xaxis else 'y'
+        self.__plot_grid__(ax, **kws_grid)
+        self.__plot_border__([ax], **kws_border)
+
+        return ax
+
     ## ------------------------
     ## Plot ancillary functions
     ## ------------------------ 
@@ -2507,12 +4222,21 @@ class eDataFrame(pd.DataFrame):
     def __create_figure__(self, **kws):
         nrows = kws.get("nrows", 1)
         ncols = kws.get("ncols", 1)
+        sharex = kws.get("sharex", False)
+        sharey = kws.get("sharey", False)
         figsize=kws.get('figsize', [10, 6])
+        if not figsize:
+            figsize=[10, 6]
         tight_layout=kws.get("tight_layout", True)
         polar=kws.get("polar", False)
         fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize,
                                tight_layout=tight_layout,
-                               subplot_kw=dict(polar=polar))
+                               subplot_kw=dict(polar=polar),
+                               sharex=sharex,
+                               sharey=sharey
+                               )
+        if nrows>1 or ncols>1:
+            ax=ax.flatten()
         return fig, ax
 
     def __plot_yticks__(self, ax, **kws):
@@ -2540,6 +4264,10 @@ class eDataFrame(pd.DataFrame):
 
 
 
+
+
+
+
 class egroupby(pd.core.groupby.DataFrameGroupBy):
     '''
     Extends the functionalities of pandas groupby class
@@ -2554,7 +4282,10 @@ class egroupby(pd.core.groupby.DataFrameGroupBy):
     def mutate(self, dict, flatten=True):
         res=self.apply(lambda x: x.mutate(dict))
         if flatten:
-            res = res.flatten()
+            try:
+                res = res.flatten()
+            except (OSError, IOError, AttributeError) as e:
+                pass
         return res
 
 
@@ -2576,7 +4307,6 @@ class egroupby(pd.core.groupby.DataFrameGroupBy):
         )
         return res
         
-
 
 
 # =====================================================

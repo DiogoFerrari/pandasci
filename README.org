@@ -1,7 +1,12 @@
 
 * Overview
 
-This package contains some classes and functions to facilitate data wrangling and exploratory data analysis (EDA) in python. It contains an extension of pandas DataFrame.
+This package contains some classes and functions to facilitate data wrangling, exploratory data analysis (EDA), and modeling in python. It contains a class eDataFrame, which extends the functionalities of pandas' DataFrame. As such, it has all the usuall pandas' DataFrame methods, and some more added to it. The name ~pandasci~  stands for "pandas for science." The extension has the following main goals:
+
+1. Keep all data transformation in tidy (tabular) format (no multi-index, etc.)
+2. Create a pipe-like flow for data manipulation in python with DataFrames, but keep it as a object oriented (not function) programming
+3. Emulate R's main tidyverse/dplyr functions for data transformation in python
+4. Provide core functionalities for easy production of data summaries
 
 * Instalation
 
@@ -9,6 +14,197 @@ To install from module's Git repo:
 
 #+BEGIN_SRC 
 pip install git+https://github.com/DiogoFerrari/pandasci.git#egg=pandasci
+#+END_SRC
+
+
+* Examples
+
+The core class of ~pandasci~ is the ~eDataFrame~, which stands for /extanded DataFrame/.
+
+** Loading/Creating ~eDataFrame~ object
+
+There are three ways to create a ~eDataFrame~ :
+1. Importing external data file using the function ~read_data~, a method provided by the ~pandasci~ package, which is just a wrap-method for other pandas function to import data
+2. Converting a ~pandas~ ~DataFrame~  into a ~eDataFrame~
+3. Creating a ~eDataFrame~ form scratch, simular to ~DataFrame~ constructor
+
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+from pandasci import ds as ps
+import pandas as pd
+
+# Importing externa data using read_date (automatically recognizes csv, xlsx, and other usual formats)
+# Note, you can specify the separator if needed. E.g., if the columns are separated by ";" in a .csv file, we can use sep=";"
+df = ps.read_data(<path-to-your-file>, sep=";")
+
+# Importing externa data using pandas import functions and then converting
+df = pd.read_csv(<path-to-your-file>)
+df = ps.eDataFrame(df) # convert to extended DataFrame
+
+# Creating from scracth (I will use this data in the examples that follows)
+df = ps.eDataFrame({"var1" : [1,2,3,4,5,6],
+                    "var2" : ["a", "b", "c", "b", "a", "b"]})
+
+#+END_SRC
+
+
+** Data wrangling
+
+Let's work different data manipulation examples first, and at each step build a "pipe-like" transformation.
+
+*** Subsetting the data
+**** *Select* : selecting columns of the data
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+# There are many options to select some columns
+# They all return a eDataFrame with the columns selected
+df.select('var1')
+df.select(['var2', 'var2'])
+
+# it is possible to simultaneously rename the colum using a dictionary
+df.select({'var1':'New name for var 1', 'var2': "var2"})
+#+END_SRC
+
+
+
+*** *Mutate:*  Creating two new variables named ~new_var1~ and ~new_var2~:
+
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+df.mutate({'new_var1': lambda x: x['var1']**2,
+           'new_var2': lambda x: x['var1']**4,
+           })
+
+# for a "pipe-like way", saving the result on dfres
+dfres = (
+    df
+    .mutate({'new_var1': lambda x: x['var1']**2,
+             'new_var2': lambda x: x['var1']**4,
+             })
+)
+print(dfres)
+
+# if you use existing variable names for the new variables, it overwrites the old ones
+(
+    df
+    .mutate({'var1': lambda x: x['var1']**2,
+             'var2': lambda x: x['var1']**4,
+             })
+)
+#+END_SRC
+
+*** *Mutate row-wise*: Creating a new variable named ~new_var1~ using a row-wise transformation
+
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+# for a "pipe-like way", saving the result on dfres
+dfres = (
+    df
+    .mutate_rowwise({'new_var1': lambda x: str(x['var1']) +" is " + x['var2']})
+)
+dfres
+#+END_SRC
+
+*** *case_when*: New variable based on matched row condition
+
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both
+# all unmatched cases will be assigned to None
+dfres = (
+    df
+    .case_when({
+         'new_var': {
+             f"(var2=='a') & (var1>1)": f"'fist case'", # Note the "'<string>'"
+             f"(var2=='b')": f"1000", # Note the "<number>" (no inner '')
+             f"(var2=='a')": f"var1", # to copy content of var2
+     	   }
+     })
+)
+dfres
+
+
+# to specity values for the ommited cases use True as the end:
+dfres = (
+    df
+    .case_when({
+         'new_var': {
+             f"(var2=='a') & (var1>1)": f"'fist case'", # Note the "'<string>'"
+             f"(var2=='b')": f"1000", # Note the "<number>" (no inner '')
+             f"(var2=='a')": f"var1", # to copy content of var2
+             True : "'remaining'" # this stands for everything not matched 
+     	   }
+     })
+)
+dfres
+#+END_SRC
+
+*** *groupby* : transform data within groups
+The function ~groupby~ in ~eDataFrames~ , differently from pandas' ~DataFrame~, returns again an ~eDataFrame~ object, keeping all transformations in a tidy format.
+- Implemented. Example soon.
+*** *nest* : create a nested eDataFrame
+- Implemented. Example soon.
+*** *pivot_long* : change data to long format
+- Implemented. Example soon.
+*** *pivot_wide* : change data to wide format
+- Implemented. Example soon.
+
+** Summaries
+*** Numeric summaries
+
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+# lets create an additional columns
+df = df.mutate({'var3': lambda x: x['var1']**2,
+                'var4': lambda x: x['var1']**4,
+                'var5': lambda x: x['var1']**6,
+                })
+
+# summarize all numerical columns
+df.summary()
+
+# only the selected columns
+df.summary(vars='var3')
+df.summary(vars=['var3', 'var1'])
+
+# by group
+df.summary(vars=['var3', 'var1'], groups='var2')
+
+# by group and custon functions
+funs = {'Total': 'sum'}
+df.summary(vars=['var3', 'var1'], funs=funs)
+df.summary(vars=['var3', 'var1'], funs=funs, groups='var2')
+#+END_SRC
+
+*** Univariate frequency table
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+df.freq(vars='var2', condition_on=None)
+df.freq(vars='var2', condition_on='var1')
+#+END_SRC
+
+** More examples
+
+*** Example 1
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+dfres = (
+    df
+    .select(['var1', 'var2'])
+    .query(f"var1>2")
+    .mutate({'new_var1': lambda x: x["var1"]**2})
+    .groupby(['var2'])
+    .mutate({'sum_var1_by_group': lambda x: x['var1'].sum(),
+             'min_var1_by_group': lambda x: x['var1'].min()})
+)
+dfres
 #+END_SRC
 
 
