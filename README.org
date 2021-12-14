@@ -1,7 +1,7 @@
 
 * Overview
 
-This package contains some classes and functions to facilitate data wrangling, exploratory data analysis (EDA), and modeling in python. It contains a class eDataFrame, which extends the functionalities of pandas' DataFrame. As such, it has all the usuall pandas' DataFrame methods, and some more added to it. The name ~pandasci~  stands for "pandas for science." The extension has the following main goals:
+This package contains some classes and functions to facilitate data wrangling, exploratory data analysis (EDA), and modeling in python. It contains a class eDataFrame (extened DataFrame), which extends the functionalities of pandas' DataFrame. As such, it has all the usuall pandas' DataFrame methods, and some more added to it. The name ~pandasci~  stands for "pandas for science." The extension has the following main goals:
 
 1. Keep all data transformation in tidy (tabular) format (no multi-index, etc.)
 2. Create a pipe-like flow for data manipulation in python with DataFrames, but keep it as a object oriented (not function) programming
@@ -32,6 +32,7 @@ There are three ways to create a ~eDataFrame~ :
 #+LABEL: code-
 #+BEGIN_SRC python :exports both :tangle 
 from pandasci import ds as ps
+import numpy as np
 import pandas as pd
 
 # Importing externa data using read_date (automatically recognizes csv, xlsx, and other usual formats)
@@ -43,8 +44,12 @@ df = pd.read_csv(<path-to-your-file>)
 df = ps.eDataFrame(df) # convert to extended DataFrame
 
 # Creating from scracth (I will use this data in the examples that follows)
-df = ps.eDataFrame({"var1" : [1,2,3,4,5,6],
-                    "var2" : ["a", "b", "c", "b", "a", "b"]})
+df = ps.eDataFrame({"var1" : [1,2,30,4,5,6, 10],
+                    "var2" : ["a", "b", "c", "b", "a", "b", np.nan ],
+                    "another var" : ["aa", "ba", "ca", "ba", "aa", "bc", 'xy'],
+                    "categorical var" : ["cat aa", np.nan, "cat ba", "cat ca",
+                                         "cat ba", "cat aa", "cat bc"],
+                    })
 
 #+END_SRC
 
@@ -54,26 +59,82 @@ df = ps.eDataFrame({"var1" : [1,2,3,4,5,6],
 Let's work different data manipulation examples first, and at each step build a "pipe-like" transformation.
 
 *** Subsetting the data
-**** *Select* : selecting columns of the data
+**** *Select columns* : selecting columns of the data
 #+CAPTION: 
 #+LABEL: code-
 #+BEGIN_SRC python :exports both :tangle 
 # There are many options to select some columns
 # They all return a eDataFrame with the columns selected
-df.select('var1')
-df.select(['var2', 'var2'])
+df.select_cols(names='var1')
+df.select_cols(names=['var2', 'var2'])
 
 # it is possible to simultaneously rename the colum using a dictionary
-df.select({'var1':'New name for var 1', 'var2': "var2"})
+df.select_cols(names={'var1':'New name for var 1',
+                      'var2': "var2"})
+
+# ... or select using regular expression
+df.select_cols(regex="^var")
+
+# ... position of the colunm (starting at 1)
+df.select_cols(positions=1)
+df.select_cols(positions=[1, 3])
+
+# ... index of the colunm (starting at 0)
+df.select_cols(index=[0, 3])
+
+# ... range (uses position, so starting at position 1)
+df.select_cols(range=[2, 4])
+
+# ... or type
+df.select_cols(type='text')
+df.select_cols(type='numeric')
+
 #+END_SRC
 
 
+**** *Select rows* : selecting rows of the data
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+# There are many options to select some rows
+# They all return a eDataFrame with the rows selected
 
-*** *Mutate:*  Creating two new variables named ~new_var1~ and ~new_var2~:
+# Using a SQL-like query
+df.select_rows(query=f"var2=='a'")
+
+# Using a regular expression
+df.select_rows(regex='^b')
+df.select_rows(regex={'another var': "c$"})
+# more than one will use the union of the results
+df.select_rows(regex={'another var': "c$",
+                      'var2' : 'c'})
+
+# Using the row numbers (starts with 1)
+df.select_rows(row_numbers=[1])
+df.select_rows(row_numbers=[1, 3])
+
+# Using the row indexes (starts with 0)
+df.select_rows(index=[0, 2])
+
+#  drop all NAs for all columns of just the selected ones
+df.select_rows(dropna=True)
+df.select_rows(dropna='var2')
+df.select_rows(dropna=['var2', 'categorical var'])
+
+# keep only rows that contain NA for all columns of the selected ones
+df.select_rows(keepna=True)
+df.select_rows(keepna='var2')
+df.select_rows(keepna=['var2', 'categorical var'])
+#+END_SRC
+
+*** *Mutate:* this function creates new columns
+
 
 #+CAPTION: 
 #+LABEL: code-
 #+BEGIN_SRC python :exports both :tangle 
+# Creating two new variables named ~new_var1~ and ~new_var2~:
+
 df.mutate({'new_var1': lambda x: x['var1']**2,
            'new_var2': lambda x: x['var1']**4,
            })
@@ -94,9 +155,27 @@ print(dfres)
              'var2': lambda x: x['var1']**4,
              })
 )
+
+
 #+END_SRC
 
-*** *Mutate row-wise*: Creating a new variable named ~new_var1~ using a row-wise transformation
+*** *Mutate type*: change the type of variables
+
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+
+
+# specifying the column and the type: (for details of categorical see method docstring)
+df.mutate_type(col2type={'var1': 'char', 'var2':'category'})
+
+# specifying the type from-to
+df.mutate_type(from_to={'object':'char'})
+df.mutate_type(from_to={'numeric':'char'})
+
+#+END_SRC
+
+*** *Mutate rowwise*: Creating a new variable named ~new_var1~ using a row-wise transformation
 
 #+CAPTION: 
 #+LABEL: code-
@@ -189,15 +268,28 @@ df.freq(vars='var2', condition_on=None)
 df.freq(vars='var2', condition_on='var1')
 #+END_SRC
 
-** More examples
+** Plots
 
+The ~eDataFrame~ class contains many wrap function to facilitate plotting data
+
+#+CAPTION: 
+#+LABEL: code-
+#+BEGIN_SRC python :exports both :tangle 
+df.plot_line('var1', 'var2')
+df.plot_scatter('var1', 'var2')
+df.plot_hist('var1')
+df.plot_density('var1')
+#+END_SRC
+
+
+** More examples
 *** Example 1
 #+CAPTION: 
 #+LABEL: code-
 #+BEGIN_SRC python :exports both :tangle 
 dfres = (
     df
-    .select(['var1', 'var2'])
+    .select_cols(names=['var1', 'var2'])
     .query(f"var1>2")
     .mutate({'new_var1': lambda x: x["var1"]**2})
     .groupby(['var2'])
