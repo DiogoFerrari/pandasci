@@ -222,6 +222,8 @@ dfres = (
 dfres
 #+END_SRC
 
+*** *Rename columns*: change the name of the columns
+- Implemented. Example soon (~rename_cols~)
 *** *groupby* : transform data within groups
 The function ~groupby~ in ~eDataFrames~ , differently from pandas' ~DataFrame~, returns again an ~eDataFrame~ object, keeping all transformations in a tidy format.
 - Implemented. Example soon.

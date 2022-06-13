@@ -1,0 +1,11 @@
+setup.py
+pandasci/__init__.py
+pandasci/ds.py
+pandasci/models.py
+pandasci/rutils.py
+pandasci/webscraping.py
+pandasci.egg-info/PKG-INFO
+pandasci.egg-info/SOURCES.txt
+pandasci.egg-info/dependency_links.txt
+pandasci.egg-info/requires.txt
+pandasci.egg-info/top_level.txt
