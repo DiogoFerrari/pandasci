@@ -232,20 +232,37 @@ class power():
     
 # *** plot
 
-    def plot(self, cost_per_observation=None):
+    def plot(self, cost_per_observation=None, design='both'):
+        '''
+        Plot the results of the power analysis
+
+        # Input 
+        # -----
+        cost_per_observation  number indicating the cost per
+                              observation. If provided,
+                              plot the total cost.
+
+        design    string. It can be,
+                  - 'fixed'      plot only the fixed design
+                  - 'sequential' plot only the sequential design
+                  - 'both'       Default. Plot the fixed and the
+                                 sequential design
+        '''
         if self.type=='2prop':
-            ax = self.__plot_2prop__(cost_per_observation)
+            ax = self.__plot_2prop__(cost_per_observation, design)
         return ax
 
 
-    def __plot_2prop__(self, cost_per_observation):
+    def __plot_2prop__(self, cost_per_observation, design):
 
         vars=['prop1', 'prop2', 'sample_size_group1', 'sample_size_group2',
               'design', 'sample_size_group1_H1expected', 
               'diff', 'peek']
+        # collecting data to plot 
+        # ----------------------- 
+        tab=self.__plot_select_design__(design)
         tab=(
-            self
-            .data
+            tab
             .select_cols(names=vars)
             .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
                                                     'sample_size_group2'],
@@ -261,16 +278,10 @@ class power():
             .combine(cols=['peek', 'diff'], colname='group_seq_design',
                      sep='_', remove=False)
         )
-        tab_expected=(
-            tab
-            .query(f"design=='Group sequence'")
-            .select_cols(names=['prop2', 'sample_size_group1_H1expected',
-                                'design', 'diff'])
-            .mutate_rowwise({'design': lambda col: f"{col['design']} (expected)"})
-            .mutate({'group_seq_design': lambda col: col['diff']})
-            .drop_duplicates()
-        )
+        # 
+        # 
         tab_maximum = self.get_sample_size_max(design='Fixed design')
+        # 
         extra_columns={}
         if cost_per_observation:
             tab_maximum=(
@@ -284,8 +295,7 @@ class power():
             extra_columns={"Cost":"Cost"}
         tab_maximum=tab_maximum.drop_cols(names='ntotal')
         tab_maximum=self.__get_main_columns__(tab_maximum,
-                                              extra_columns=extra_columns
-                                              )
+                                              extra_columns=extra_columns)
 
         x = "prop2"
         y = "sample_size"
@@ -307,38 +317,19 @@ class power():
                     f"Two-sided : {self.two_tail}; "+
                     f"Ratio between sample sizes in each group : {self.ratio}"
                     )
-        g = (
-            gg.ggplot(tab)
-            + gg.geom_point(gg.aes_string(x=x, y=y,
-                                          colour=color,
-                                          shape=shape,
-                                          group=size
-                                          ),
-                             size=3.5, alpha=.4, position="identity",
-                            data=tab.query(f"design=='Fixed design'")) 
-            + gg.geom_point(gg.aes_string(x=x, y=y,
-                                          colour=color,
-                                          shape=shape,
-                                          group=size
-                                          ),
-                             size=2.5, alpha=.1, position="identity",
-                            data=tab.query(f"design!='Fixed design'")) 
-            + gg.geom_line(gg.aes_string(x=x, y=y, group=robj.NULL, colour=color),
-                           size=.6,
-                            data=tab.query(f"design=='Fixed design'")) 
-            + gg.geom_line(gg.aes_string(x=x, y=y, group=group_seq_design, colour=color),
-                           size=.6, alpha=.1, linetype=2,
-                           data=tab.query(f"design!='Fixed design'")) 
+
+        g = gg.ggplot(tab)
+        if design in ['fixed', 'both']:
+            g = self.__plot_2prop_fixed_design__(g, x, y, color, shape, size, tab)
+        if design in ['sequence', 'both']:
+            g = self.__plot_2prop_sequence_design__(g, x, y,
+                                                    color, shape, size, 
+                                                    group_seq_design,
+                                                    tab,
+                                                    design)
             # 
-            + gg.geom_point(gg.aes_string(x=x, y='sample_size_group1_H1expected',
-                                          shape=shape,
-                                          colour=color),
-                           size=3, alpha=.2, linetype=1,
-                           data=tab_expected) 
-            + gg.geom_line(gg.aes_string(x=x, y='sample_size_group1_H1expected',
-                                         group=group_seq_design, colour=color),
-                           size=.6, alpha=.2, linetype=1,
-                           data=tab_expected) 
+        g = (
+            g
             + gg.labs(
                 x        = labx,
                 y        = laby,
@@ -350,7 +341,6 @@ class power():
                 subtitle = subtitle,
                 caption  = robj.NULL
                 )
-
             # + gg.scale_size_manual(cols)
             + gg.scale_colour_brewer(palette="Set1") 
             + gg.theme_bw()
@@ -358,9 +348,9 @@ class power():
             + ggguides()
         )
 
-
         # table 
         # -----
+        tab_maximum=self.__plot_select_design__(tab=tab_maximum, design=design)
         gtab = gridExtra.tableGrob(tab_maximum, rows = robj.NULL)
         layout = '''
         A
@@ -372,6 +362,82 @@ class power():
         return g
 
 
+    def __plot_2prop_fixed_design__(self, g, x, y, color, shape, size, tab):
+        g = (
+            g
+            + gg.geom_point(gg.aes_string(x=x, y=y,
+                                          colour=color,
+                                          shape=shape,
+                                          group=size
+                                          ),
+                             size=3.5, alpha=.4, position="identity",
+                            data=tab.query(f"design=='Fixed design'")) 
+            + gg.geom_line(gg.aes_string(x=x, y=y, group=robj.NULL, colour=color),
+                           size=.6,
+                            data=tab.query(f"design=='Fixed design'")) 
+        )
+        return g
+
+    def __plot_2prop_sequence_design__(self, g, x, y,
+                                       color, shape, size, 
+                                       group_seq_design,
+                                       tab,
+                                       design):
+        tab_expected=eDataFrame()
+        if design in ['sequence', 'both']:
+            tab_expected=(
+                tab
+                .query(f"design=='Group sequence'")
+                .select_cols(names=['prop2', 'sample_size_group1_H1expected',
+                                    'design', 'diff'])
+                .mutate_rowwise({'design': lambda col: f"{col['design']} (expected)"})
+                .mutate({'group_seq_design': lambda col: col['diff']})
+                .drop_duplicates()
+            )
+        # 
+        alpha=.4 if design=='sequence' else .1
+        g = (
+            g
+            + gg.geom_point(gg.aes_string(x=x, y=y,
+                                          colour=color,
+                                          shape=shape,
+                                          group=size
+                                          ),
+                             size=2.5, alpha=alpha, position="identity",
+                            data=tab.query(f"design!='Fixed design'")) 
+            + gg.geom_line(gg.aes_string(x=x, y=y, group=group_seq_design, colour=color),
+                           size=.6, alpha=alpha, linetype=2,
+                           data=tab.query(f"design!='Fixed design'")) 
+            # 
+            + gg.geom_point(gg.aes_string(x=x, y='sample_size_group1_H1expected',
+                                          shape=shape,
+                                          colour=color),
+                           size=3, alpha=alpha+.1, linetype=1,
+                           data=tab_expected) 
+            + gg.geom_line(gg.aes_string(x=x, y='sample_size_group1_H1expected',
+                                         group=group_seq_design, colour=color),
+                           size=.6, alpha=alpha+.1, linetype=1,
+                           data=tab_expected) 
+        )
+        return g
+
+
+    def __plot_select_design__(self, design=None, tab=None):
+        if design=='fixed':
+            design=['Fixed design']
+            # 
+        elif design=='sequence':
+            design=['Group sequence']
+            # 
+        elif design=='both':
+            design=['Group sequence', 'Fixed design']
+            # 
+        if tab is None:
+            res=self.data.select_rows(query=f"design=={design}")
+        else:
+            res=tab.select_rows(query=f"Design=={design}")
+        return res
+        
     # def __plot_2prop__(self):
     #     group_diff_label='Group difference ($\pi_t - \pi_c$)'
     #     taba = (
@@ -699,7 +765,7 @@ class power():
                                 'stopProb'          : 'Power',
                                 } | extra_columns)
         )
-        return tab
+        return eDataFrame(tab)
 
 
 
@@ -715,6 +781,7 @@ class regression():
            models   : a dictionary of tuples. It can be either
                       - (formula str or dict, family str)
                       - (formula str or dict, family str, DataFrame)
+        
                       formula str or dict
                       -------------------
                       The first element can be a string or a dictionary.
@@ -733,13 +800,19 @@ class regression():
                                              d. inputs = {'group': {'oldnames': "newnames"}}
                                          
                           - 'interactions' : a list of tuples of strings with
-                                             the names of the interactive terms
+                                             the names of the interactive terms.
+                                             Note that the strings must match
+                                             the labels of the variables in
+                                             case they are renamed in the
+                                             'input.'
                                              The elements in each tuple will be
                                              an interaction
                                              a. formula
                                              b. interactions = [(...)]
                                              d. interactions = {'group': [(...)]}
-                                                                   - 'clusters'     : TBD
+
+                          - 'clusters'     : TBD
+
                       See example below
         
                       family
@@ -1821,7 +1894,7 @@ class regression():
             }
         self.__build_coef_dict__()
         return models
-            
+
 
     def __get_coef_groups__(self):
         groups=(
