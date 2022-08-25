@@ -1,10 +1,12 @@
+# from .rutils import rutils
+import pandasci.rutils as rutils
 import pandas as pd
 import numpy as np
 from scipy import stats
 import scipy as sp
 #
 import collections.abc
-#python 3.10 change aliases for collection; modules, e.g., spss
+# python 3.10 change aliases for collection; modules, e.g., spss
 # that depends on it need this workaround
 collections.Iterable = collections.abc.Iterable
 collections.Mapping = collections.abc.Mapping
@@ -62,8 +64,9 @@ warnings.filterwarnings("ignore")
 # rpy2_logger.setLevel(logging.ERROR)   # will display errors, but not warnings
 
 
-# {{{ functions }}}
+# * functions
 
+# ** others
 def quantile10(x):
     res = np.quantile(x, q=.10) 
     return res
@@ -79,6 +82,8 @@ def quantile90(x):
 def count_missing(x):
     res = x.isna().sum()
     return res
+
+# ** reading data
 def read_data(**kwargs):
     fn=kwargs.get('fn')
     
@@ -105,6 +110,8 @@ def read_data(**kwargs):
         return read_tsv(**kwargs)
     elif fn_type=='.txt':
         return read_txt(**kwargs)
+    elif fn_type=='.tex':
+        return read_tex(**kwargs)
     elif kwargs.get('gs_api', None):
         return read_gspread(**kwargs)
     # 
@@ -191,7 +198,11 @@ def read_txt(**kwargs):
     #                    parse_dates=kwargs.get('parse_dates', None),
     #                    )
     return eDataFrame(df)
-        
+def read_tex(**kwargs):
+    fn = os.path.expanduser(kwargs['fn'])
+    with open(fn) as f:
+        content=f.readlines()
+    return content
 def read_gspread(**kwargs):
     '''
     Load google spreadsheet
@@ -246,8 +257,9 @@ def reorderLegend(ax=None,order=None,unique=False):
     if unique:  labels, handles= zip(*unique_everseen(zip(labels,handles), key = labels)) # Keep only the first of each handle
     return(handles, labels)
 
-# Simulate data 
-# -------------
+
+# ** simulate data 
+
 def simulate_data(var_groups, n, seed=None):
     '''
     Generate a simulated data set
@@ -323,13 +335,8 @@ def simulate_data(var_groups, n, seed=None):
     res = eDataFrame(res).mutate_type(col2type=None, from_to={"object":'char'})
     return res
 
-# }}}
-# =====================================================
-# Data
-# =====================================================
-# {{{ spss                  }}}
+# * spss
 
-# will be deprecated soon due to methods naming (old class)
 class spss_data():
     '''
     Class receives a full path of a .sav file and returns a 
@@ -820,9 +827,10 @@ class read_spss():
             res[kstr] = vstr
         return res
 
-# }}}
-# {{{ Extended DataFrame    }}}
 
+# * Extended DataFrame
+
+# ** class
 class eDataFrame(pd.DataFrame):
     def __init__(self,  *args, **kwargs):
         # use the __init__ method from DataFrame to ensure
@@ -841,9 +849,7 @@ class eDataFrame(pd.DataFrame):
     def _constructor(self):
         return eDataFrame
 
-    # =====================================================
-    # Properties
-    # =====================================================
+# ** Properties
     # variables 
     # ---------
     def __create_var_labels__(self):
@@ -1000,9 +1006,7 @@ class eDataFrame(pd.DataFrame):
         self.replace({var:rec}, regex=False, inplace=True)
 
 
-    # =====================================================
-    # Data wrangling
-    # =====================================================
+# ** Data wrangling
     def case_when(self, varname, replace=None):
         '''
         Deprecated. Use mutate_case insead. Kept for backward compatibility.
@@ -1238,10 +1242,10 @@ class eDataFrame(pd.DataFrame):
         Combine columns
         
         Input
-           cols list with the name of the columns to join
+           cols    list with the name of the columns to join
            colmane string with the name of the new colum
-           sep string to put between columns merged
-           remove boolean, if True will remove the columns merged
+           sep     string to put between columns merged
+           remove  boolean, if True will remove the columns merged
         
         Output
            Extended data frame with columns merged
@@ -1263,14 +1267,14 @@ class eDataFrame(pd.DataFrame):
         return res
         
 
-    def mutate(self, dict=None, var_to_wrap=None, wrap=None):
+    def mutate(self, dict=None, var_to_wrap=None, wrap=None, wrap_char="\\n"):
         res = self
         if dict:
             for k, v in dict.items():
                 res = res.assign(**{k: v})
                 res = res.loc[:, ~res.columns.duplicated(keep='last')]
         if var_to_wrap and wrap:
-            res=res.__wrap_var__(var=var_to_wrap, wrap=wrap)
+            res=res.__wrap_var__(var=var_to_wrap, wrap=wrap, wrap_char=wrap_char)
         return eDataFrame(res)
 
     def mutate_rowwise(self, dict):
@@ -1280,7 +1284,8 @@ class eDataFrame(pd.DataFrame):
             res = res.loc[:, ~res.columns.duplicated(keep='last')]
         return eDataFrame(res)
 
-    def mutate_categorical(self, var, cats=None, ordered=True, wrap=None):
+    def mutate_categorical(self, var, cats=None, ordered=True, wrap=None,
+                           wrap_char=None):
         '''
         Change format of string or object to categorical
 
@@ -1296,6 +1301,8 @@ class eDataFrame(pd.DataFrame):
                 if it is possible. and use as the categories,
         wrap either None or an integer. If an integer, return category
              labels with string wrapped
+        wrap_char If None, it uses '\n' for new line. A specific new line
+                  markdown can be uses, such as '<br>'
 
         Output
         ------
@@ -1321,7 +1328,7 @@ class eDataFrame(pd.DataFrame):
                                         ordered=ordered)})
             )
             if wrap:
-                self=self.__wrap_var__(label, wrap=wrap)
+                self=self.__wrap_var__(label, wrap=wrap, wrap_char=wrap_char)
 
         return eDataFrame(self)
         
@@ -1564,6 +1571,55 @@ class eDataFrame(pd.DataFrame):
                 return self
         if keep_original:
             res = self.bind_col(res_dummies, ignore_index=False)
+        return eDataFrame(res)
+
+
+    def mutate_collect(self, into, vars, overwrite=False):
+        '''
+        This method reverts the "mutate_to_dummy" function (see
+        Details)
+        
+        Input
+        -----
+        into      string with the name of the new variable
+        vars      a list of string with variable names (see Details)
+        overwrite boolean, overwrite old variable if it already exists
+
+
+        Details:
+        -------
+        It create a variable called <into>. That new variable
+        will receive the name of the column listed in the parameter
+        'vars' whenever the content of that column is not nil.
+        Note that it assumes the list of variables in 'vars'
+        is an expansion of a categorical variable, so in each row,
+        only one of the columns must be non-nil. Otherwise,
+        values can be overwritten in the new value created
+        in the order they appear in the list 'vars.'
+        
+        '''
+            
+        if into in self.names():
+            if overwrite:
+                self=self.drop_cols(names=into)
+            else:
+                res=self
+                print(f"\nVariable '{into}' already exists. "+\
+                      "New variable not created. "+\
+                      "Use overwrite=True to overwrite it.\n", flush=True)
+        if overwrite or into not in self.names():
+            res=self.copy()
+            res[into]=np.nan 
+            for var in vars:
+                res = (
+                    res
+                    .mutate_case({
+                         into: {
+                            f"(pd.isna({var}))": f"copy({into})",
+                            True               : var
+                               }
+                     })
+                )
         return eDataFrame(res)
 
 
@@ -1867,6 +1923,7 @@ class eDataFrame(pd.DataFrame):
            - row_numbers a list with the number of the rows to select. It starts 
                        on 1 for the first row (note that it is differnt from 
                        row index, which usually starts at 0 for the first row)
+                       contains the maximum value of column 'a'
 
            index a list with values of the row index to select
            drop_na a string or list of column names to drop NA. If a boolean value 
@@ -1880,7 +1937,7 @@ class eDataFrame(pd.DataFrame):
         If all parameters are provided, only the one with the highest priority will
         be considered. The priority order is 
 
-                     regex   >   query   >   row_numbers   >   index
+                     regex   >   query   >   row_numbers   >   index  > value
 
         The drop_na is always considered. To remove rows with NAs, it uses the 
         method dropna.
@@ -2017,8 +2074,8 @@ class eDataFrame(pd.DataFrame):
         assert not vars or isinstance(vars, list), 'vars must be a string or a list'
         inplace=kws.get("inplace", False)
         kws['inplace']=inplace
+        var_dict={}
         if vars:
-            var_dict={}
             for var in vars:
                 var_dict[var]=value
             if not inplace:
@@ -2188,17 +2245,14 @@ class eDataFrame(pd.DataFrame):
     # def reset_index(self, name=None, drop=False):
     #     return eDataFrame(self.reset_index(drop=drop, name=name))
 
-    # =====================================================
-    # group by
-    # =====================================================
+# ** group by
     def groupby(self, group, *args, **kwargs):
         res = egroupby(self, group)
         return res
         
 
-    # =====================================================
-    # Statistics
-    # =====================================================
+# ** Statistics
+
     def get_outliers(self, var):
         Q1 = self[var].quantile(0.25)
         Q3 = self[var].quantile(0.75)
@@ -2405,8 +2459,10 @@ class eDataFrame(pd.DataFrame):
             vars = [vars]
         # 
         if include_na:
-            res=self
+            res=self.copy()
             for var in vars:
+                if pd.api.types.is_categorical_dtype(res[var]):
+                    res[var] = res[var].cat.add_categories("Missing")
                 res=res.fillna(value={var:'Missing'}, inplace=False)
         else:
             res=self
@@ -2466,6 +2522,19 @@ class eDataFrame(pd.DataFrame):
             .mutate({"hi": lambda x: x['freq']+1.96*x['stdev']})
         )
         return eDataFrame(res)
+
+
+    def quantiles(self, var, nq=10, labels=None, silent=False):
+        res = (
+            self
+            .mutate({var: lambda col: pd.qcut(col[var], q=nq, labels=labels)})
+            .freq(vars=var, groups=None, include_na=False)
+            .drop_cols(names=['lo', 'hi', 'stdev'])
+        )
+        if not silent:
+            print(res.to_string(index=False))
+        return eDataFrame(res)
+
 
     def ci_t(self, var, alpha=.95):
         x = self[var]
@@ -2790,9 +2859,13 @@ class eDataFrame(pd.DataFrame):
                             caliper = robj.NULL,
                             std_caliper = True)
         res = r.summary(mat)
-        res = base.as_data_frame(res.rx['sum.all']).reset_index(drop=False)
+        res = res.rx['sum.all']
+        res = base.data_frame(res)
+        # res = base.cbind(base.rownames(res), base.as_data_frame(res, row_names=robj.NULL))
+        ru=rutils.rutils()
+        res = ru.df2pandas(res).reset_index(drop=False)
         res = (
-            eDataFrame(res)
+            res
             .rename_cols(regex={'sum.all.':'',
                                 '\.\.':'.',
                                 '\.*$':'',
@@ -2808,9 +2881,7 @@ class eDataFrame(pd.DataFrame):
 
 
 
-    # =====================================================
-    # Utilities
-    # =====================================================
+# ** Utilities
     def names(self, regexp=None, print_long=False):
         names = list(self)
         if regexp:
@@ -2818,7 +2889,7 @@ class eDataFrame(pd.DataFrame):
                      bool(re.search(pattern=regexp, string=nm))]
         if print_long:
             for col in names:
-                print(col)
+                print(f"\"{col}\",")
         if not names:
             print("\nNo column name matches the regexp!\n")
         return names
@@ -2865,6 +2936,7 @@ class eDataFrame(pd.DataFrame):
                 # 
                 escape=False,
                 index=False,
+                digits=2,
                 # 
                 float_format=None,
                 rotate=False,
@@ -2893,7 +2965,7 @@ class eDataFrame(pd.DataFrame):
                            Useful to group rows.
            add_col_group : a list of dictinaries. Each dictionary must have 
                            the column labels to add (keys) and tuples of
-                           integers indicating "(initial column, end column)."
+                           integers indicating "(initial column, end column, <l/r/c alignment>)."
                            It will add a multicolumn text at the top of the table, 
                            above the heading. 
                            If there is more than one dictionary in the list, 
@@ -2950,6 +3022,7 @@ class eDataFrame(pd.DataFrame):
             escape=False
         tab = (
             self
+            .round(digits)
             .to_latex(na_rep=na_rep, index=index, escape=escape,
                       caption=caption, label=label, position=position, **kws)
         )
@@ -2967,8 +3040,16 @@ class eDataFrame(pd.DataFrame):
                    bool(re.search(pattern='\\\\multicolumn', string=txti)) else
                    txti for txti in tab ]
             tab = "\\\\\n".join(tab)
-        if table_env and not caption and not label:
+        # 
+        # 
+        if not table_env and not caption and not label:
+            tab = tab.replace('\\begin{table}','')
+            tab = tab.replace('\\end{table}','')
+        if table_env and not caption and not label and not \
+           bool(re.search(pattern='\\\\begin\{table\}', string=tab)):
             tab = "\\begin{table}\n" + tab + "\\end{table}"
+        # 
+        # 
         if rotate:
             tab = tab.replace("\\begin{table}","")
             tab = tab.replace("\\end{table}","")
@@ -2984,6 +3065,10 @@ class eDataFrame(pd.DataFrame):
                 col_pos=1
                 midrule=""
                 for col_label, pos in d.items():
+                    assert len(pos)==3, ("Dictionary values of add_col_group "+\
+                                         "must be a tuple with three values: "+\
+                                         "(initial column, end column, <l/r/c alignment>"
+                                         )
                     for current_pos in range(col_pos, pos[0]+1):
                         if current_pos<pos[0]:
                             txt+=" & "
@@ -3004,6 +3089,12 @@ class eDataFrame(pd.DataFrame):
                     f.write(tab)
         pd.set_option('display.max_colwidth', pdcolw)
         return tab
+
+    def print(self, digits=2, *args, **kwargs):
+        kwargs['index']=False
+        format=f'{{:0.{digits}f}}'
+        with pd.option_context('display.float_format', format.format):
+            print(self.to_string(*args, **kwargs), flush=True)
         
     def t(self):
         res = self.transpose().reset_index(drop=False)
@@ -3047,10 +3138,8 @@ class eDataFrame(pd.DataFrame):
                 writer.save()
 
 
-    # =====================================================
-    # Utilities (ancillary)
-    # =====================================================
-    def __wrap_var__(self, var, wrap=None):
+# ** Utilities (ancillary)
+    def __wrap_var__(self, var, wrap=None, wrap_char=None):
         # 
         wascat=False
         if wrap:
@@ -3060,7 +3149,12 @@ class eDataFrame(pd.DataFrame):
                 cats = self[var].cat.categories.values
                 cats = [textwrap.fill(cat, wrap)  for cat in cats]
             self=self.mutate({var: lambda x: x[var].str.wrap(wrap)})
+            if wrap_char:
+                self=self.replace({var:{"\\n":wrap_char}} , regex=True)
             if wascat:
+                if wrap_char:
+                    cats = [re.sub(pattern='\\n', repl=wrap_char, string=c) for
+                            c in cats]
                 self=(
                    self
                    .mutate({var: lambda x: pd.Categorical(x[var],
@@ -3071,25 +3165,23 @@ class eDataFrame(pd.DataFrame):
 
 
 
-    # =====================================================
-    # Plots
-    # =====================================================
-    def plot(self, type, **kws):
-        #TBD
-        pass
+# ** Plots
+# *** Main
+
+    def plot(self, *args, **kws):
+        tab=pd.DataFrame(self.copy())
+        return tab.plot(*args, **kws)
+        
     
-    # =====================================================
-    # Scatter plot
-    # =====================================================
+# *** Scatter plot
     def plot_scatter(self, x, y, **kwargs):
         ax, axl = self.plot_line(x, y, kind='scatter', pts_show=True, **kwargs)
         plt.tight_layout()
         return ax, axl
         
-    # =====================================================
-    # Line Plot
-    # =====================================================
+# *** Line Plot
     def plot_line(self, x, y,
+                  type='line',
                   # facets
                   facet_x=None, facet_x_dist=3,
                   facet_y=None, facet_y_dist=1,
@@ -3249,9 +3341,7 @@ class eDataFrame(pd.DataFrame):
         return ax, ax.axes.flatten()
 
 
-    # =====================================================
-    # Polar plot
-    # =====================================================
+# *** Polar plot
     def plot_polar(self, vars, group=None, func='mean', facet=None, **kws):
         '''
         Plot a summary value of variables using polar coordinate
@@ -3550,9 +3640,7 @@ class eDataFrame(pd.DataFrame):
                             zorder=0,
                             label=group)
 
-    # =====================================================
-    # Histogram
-    # =====================================================
+# *** Histogram
     def plot_hist(self, var, groups=None, discrete=False,
                   xtickslabel_wrap=None, 
                   xtickslabel_fontsize=None,
@@ -3612,7 +3700,7 @@ class eDataFrame(pd.DataFrame):
             
     
         
-    # Density plot 
+# *** Density plot 
     # ------------
     # def plot_density(self, var, ax=None, **kws):
     #     if not ax:
@@ -3965,8 +4053,6 @@ class eDataFrame(pd.DataFrame):
 
 
 
-
-
     def __plot_hist_bin_labels__(self, ax, **kws):
         bin_labels_color=kws.get('bin_labels_color', 'black')
         bin_labels_ha=kws.get('bin_labels_ha', 'center')
@@ -4025,9 +4111,7 @@ class eDataFrame(pd.DataFrame):
             ax.set_ylim(ylim)
 
 
-    # =====================================================
-    # Plot table
-    # =====================================================
+# *** Plot table
     def plot_table(self, ax=None, **kws):
         '''
         Plot table
@@ -4587,9 +4671,7 @@ class eDataFrame(pd.DataFrame):
 
         return ax
 
-    ## ------------------------
-    ## Plot ancillary functions
-    ## ------------------------ 
+# *** Plot ancillary functions
     def __plot_border__(self, axs, **kws):
         for axc in axs:
             axc.spines['bottom'].set_visible(True)
@@ -4654,11 +4736,7 @@ class eDataFrame(pd.DataFrame):
                 linestyle=grid_linetype, alpha=grid_alpha)
         ax.set_axisbelow(True) # to put the grid below the plot
 
-
-
-
-
-
+# * egroupby class
 
 class egroupby(pd.core.groupby.DataFrameGroupBy):
     '''
@@ -4700,16 +4778,8 @@ class egroupby(pd.core.groupby.DataFrameGroupBy):
         return res
         
 
-
-# =====================================================
-# Ancillary
-# =====================================================
-
-# }}}
-# =====================================================
-# Plots
-# =====================================================
-# {{{ Extended Slider }}}
+# * Plots
+# ** Extended Slider
 
 class eSlider(Slider):
     def __init__(self, left, bottom, width, height,
@@ -4787,8 +4857,8 @@ class eSlider(Slider):
         self.marker.remove()
         self.slider_marker(pos=self.val, y=.5)
 
-# }}}
-# {{{ Extended TextBox }}}
+
+# ** Extended TextBox
 
 class eTextBox(TextBox):
     def __init__(self, left, bottom, width, height, hovercolor="whitesmoke",
@@ -4818,7 +4888,3 @@ class eTextBox(TextBox):
 
 
 
-# }}}
-# =====================================================
-# Models
-# =====================================================

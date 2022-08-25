@@ -1,3 +1,9 @@
+import pandasci.ds as dss
+import re
+
+# import pandas as pd
+# import numpy as np
+
 
 # * R modules
 # supress warnings
@@ -20,6 +26,8 @@ pandas2ri.activate()
 stats = importr('stats')
 base = importr('base')
 utils = importr("utils")
+dplyr=importr("dplyr")
+formula_tools=importr("formula.tools")
 
 # * rutils class
 
@@ -79,3 +87,17 @@ class rutils():
         v.names = list(dict.keys())
         return v
         
+    def df2pandas(self, df):
+        df=dplyr.mutate_if(df, base.is_factor, base.as_character)
+        res = robj.conversion.rpy2py(df)
+        return dss.eDataFrame(res)
+
+    def pandas2df(self, df):
+        res = robj.conversion.py2rpy(df)
+        return res
+
+    def formula2varlist(self, formula):
+        vars = list(formula_tools.get_vars(robj.Formula(formula)))
+        vars = [re.sub(pattern='`', repl='', string=var) for var in vars]
+        return vars
+
