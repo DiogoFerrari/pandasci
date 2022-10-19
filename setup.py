@@ -8,7 +8,9 @@ setup(
     # Needed to actually package something
     packages=['pandasci'],
     # Needed for dependencies
-    install_requires=['pandas', 'numpy', 'matplotlib'],
+    install_requires=['pandas', 'numpy', 'matplotlib',
+                      "xlsxwriter", "gspread", "oauth2client"
+                      ],
     # *strongly* suggested for sharing
     version='0.001',
     # The license can be anything you like

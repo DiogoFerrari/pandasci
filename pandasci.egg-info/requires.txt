@@ -1,3 +1,6 @@
+gspread
 matplotlib
 numpy
+oauth2client
 pandas
+xlsxwriter

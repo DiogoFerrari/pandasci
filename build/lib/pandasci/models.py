@@ -17,8 +17,14 @@ from statsmodels.iolib.summary2 import summary_col
 from scipy.stats import norm as qnorm
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
+import pathlib
+#
+ru=rutils() ## my tools for R<->python
 
-#  R packages
+# * R packages
+
+print("Loading R packages for module models of pandasci. It may take a while...")
+
 # supress warnings
 import warnings
 warnings.filterwarnings("ignore")
@@ -26,8 +32,6 @@ from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
 import logging
 rpy2_logger.setLevel(logging.ERROR)   # will display errors, but not warnings
 # 
-
-ru=rutils() ## my tools for R<->python
 # 
 import rpy2.robjects as robj
 import rpy2.rlike.container as rlc
@@ -43,24 +47,26 @@ from rpy2.robjects.packages import data as datar
 # import data from package: datar(pkg as loaded into python).fetch('data name')['data name']
 # 
 pandas2ri.activate()
-stats = importr('stats')
-base = importr('base')
-utils = importr("utils")
-ggtxt = importr("ggtext")
-jtools=importr("jtools")
-broom=importr("broom")
-broomh=importr("broom.helpers")
-metrics=importr("Metrics")
-modelsummary=importr("modelsummary")
-nnet=importr("nnet")
-rpact = importr("rpact")
-latex2exp=importr("latex2exp")
-gridExtra = importr("gridExtra")
-patchwork = importr("patchwork")
-infer=importr("infer")
-citools=importr("ciTools")
-ggthemes=importr("ggthemes")
-formula_tools=importr("formula.tools")
+stats = importr_or_install('stats')
+base = importr_or_install('base')
+utils = importr_or_install("utils")
+ggtxt = importr_or_install("ggtext")
+jtools=importr_or_install("jtools")
+broom=importr_or_install("broom")
+broomh=importr_or_install("broom.helpers")
+metrics=importr_or_install("Metrics")
+modelsummary=importr_or_install("modelsummary")
+nnet=importr_or_install("nnet")
+rpact = importr_or_install("rpact")
+latex2exp=importr_or_install("latex2exp")
+gridExtra = importr_or_install("gridExtra")
+patchwork = importr_or_install("patchwork")
+infer=importr_or_install("infer")
+citools=importr_or_install("ciTools")
+ggthemes=importr_or_install("ggthemes")
+formula_tools=importr_or_install("formula.tools")
+
+print("R packages loaded!")
 
 # * functions
 def ggtheme():
@@ -138,636 +144,6 @@ def ggguides():
                                             title_hjust=0)
 		 )
     return g        
-
-# * Power and Sample size
-# ** class
-
-class power():
-    def __init__(self,
-                 diff,
-                 alpha=0.05,
-                 power=0.8,
-                 two_tail=True,
-                 ratio=1,
-                 seq_design={
-                     'typeOfDesign': 'OF',
-                     'stops_at'    :[.33, .66, 1]
-                 },
-                 type=None,
-                 type2prop={"prop1":None},
-                 ):
-        '''
-        Compute the sample size
-
-        Input 
-        -----
-        diff     : difference between average value of the outcome in the
-                   two groups (e.g., different in proportions, mean, etc.)
-        alpha    : significance level
-        power    : power of the test
-        two_tail : boolean. If True, use two-tail test
-        ratio    : Sample size ratio, nobs2 = ratio * nobs1. Use 1 if the
-                   sample size is the same in the two groups
-        type     : sting with the type of test. Options are:
-
-                   2prop :  used when you have two groups and
-                            you want to know if the proportions of each group are
-                            different from one another.
-                            Examples: 
-                            -------
-                            a. Is the proportion of men in favor of gender equality
-                               different from the proportion of woman in favor of
-                               gender equality
-                            b. Is proportion of cases with outcome "A" different 
-                               different in the treatment and control group?
-
-        seq_design a dictionary with parameters for the R package 'rpact' for
-                   group sequential design. The core parameters are:
-
-                   typeOfDesign  string with function to compute the critical
-                                 values at each peek. Default is 'OF'
-                                 O’Brien-Fleming (Proschan et al., 2006).
-                                 See rpact for other options
-        
-                   stops_at      Ration of the total sample to peek [.33, .66, 1]
-
-        type*   : a dictionary with type-specific arguments. The * can be:
-          
-                  2prop : prop1  a list or float with the proportion(s)
-                          presumed for group 1
-        
-
-        '''
-        assert type, "'type' must be provided"
-        assert diff, "The effect size 'diff' must be provided"
-        
-        if isinstance(diff, float):
-            diff = [diff]
-        self.diff=diff
-        self.alpha=alpha
-        self.power=power
-        self.ratio=ratio
-        self.two_tail=two_tail
-        self.type=type
-        self.data=None
-        self.seq_design=seq_design
-        self.type2prop=type2prop
-        if type=='2prop':
-            self.data = self.__2prop__()
-
-
-
-# ** methods
-# *** default
-
-    def __str__(self):
-        print(self.data, flush=True)
-        return None
-
-    def __repr__(self):
-        print(self.data, flush=True)
-        return ''
-
-
-    
-# *** plot
-
-    def plot(self, cost_per_observation=None, design='both'):
-        '''
-        Plot the results of the power analysis
-
-        # Input 
-        # -----
-        cost_per_observation  number indicating the cost per
-                              observation. If provided,
-                              plot the total cost.
-
-        design    string. It can be,
-                  - 'fixed'      plot only the fixed design
-                  - 'sequential' plot only the sequential design
-                  - 'both'       Default. Plot the fixed and the
-                                 sequential design
-        '''
-        if self.type=='2prop':
-            ax = self.__plot_2prop__(cost_per_observation, design)
-        return ax
-
-
-    def __plot_2prop__(self, cost_per_observation, design):
-
-        vars=['prop1', 'prop2', 'sample_size_group1', 'sample_size_group2',
-              'design', 'sample_size_group1_H1expected', 
-              'diff', 'peek']
-        # collecting data to plot 
-        # ----------------------- 
-        tab=self.__plot_select_design__(design)
-        tab=(
-            tab
-            .select_cols(names=vars)
-            .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
-                                                    'sample_size_group2'],
-                          var_name='group', value_name='sample_size',
-                          ignore_index=True)
-            .mutate_type(col2type={'diff': str} )
-            .mutate_case({
-                 'Treatment group': {
-                     f"(group=='sample_size_group1' )": "0 (e.g., control)", 
-                     f"(group=='sample_size_group2' )": "1 (e.g., treatment)",
-                   }
-             })
-            .combine(cols=['peek', 'diff'], colname='group_seq_design',
-                     sep='_', remove=False)
-        )
-        # 
-        # 
-        tab_maximum = self.get_sample_size_max(design='Fixed design')
-        # 
-        extra_columns={}
-        if cost_per_observation:
-            tab_maximum=(
-                tab_maximum   
-                .mutate({
-                    'Cost': lambda col: round(col['ntotal']*
-                                              cost_per_observation, 2),
-                })
-                .mutate_rowwise({'Cost': lambda col: f"$ {col['Cost']}"})
-            )
-            extra_columns={"Cost":"Cost"}
-        tab_maximum=tab_maximum.drop_cols(names='ntotal')
-        tab_maximum=self.__get_main_columns__(tab_maximum,
-                                              extra_columns=extra_columns)
-
-        x = "prop2"
-        y = "sample_size"
-        color='diff'
-        shape='design'
-        size='`Treatment group`'
-        group_seq_design='group_seq_design'
-        twotailed = 'Yes' if self.two_tail else "No"
-        labx= latex2exp.TeX("Proportion of 'positive' outcome cases (Y=1) "+\
-                            'in the group of interest ($\pi_t$)')
-        laby='Sample size required to detect the difference'
-        labcolor= latex2exp.TeX('Group difference ($\\pi_t - \\pi_c$)')
-        labshape='Design'
-        title = "Sample size calculation"
-        subtitle = latex2exp.TeX("Info:  "+
-                    f"$\\alpha$: {self.alpha}; "
-                    f"Power ($\\beta$): {self.power}; "+
-                    f"Test : {self.type}; "+
-                    f"Two-sided : {self.two_tail}; "+
-                    f"Ratio between sample sizes in each group : {self.ratio}"
-                    )
-
-        g = gg.ggplot(tab)
-        if design in ['fixed', 'both']:
-            g = self.__plot_2prop_fixed_design__(g, x, y, color, shape, size, tab)
-        if design in ['sequence', 'both']:
-            g = self.__plot_2prop_sequence_design__(g, x, y,
-                                                    color, shape, size, 
-                                                    group_seq_design,
-                                                    tab,
-                                                    design)
-            # 
-        g = (
-            g
-            + gg.labs(
-                x        = labx,
-                y        = laby,
-                color    = labcolor, 
-                shape    = labshape,
-                fill     = robj.NULL,
-                linetype = robj.NULL,
-                title    = title,
-                subtitle = subtitle,
-                caption  = robj.NULL
-                )
-            # + gg.scale_size_manual(cols)
-            + gg.scale_colour_brewer(palette="Set1") 
-            + gg.theme_bw()
-            + ggtheme()
-            + ggguides()
-        )
-
-        # table 
-        # -----
-        tab_maximum=self.__plot_select_design__(tab=tab_maximum, design=design)
-        gtab = gridExtra.tableGrob(tab_maximum, rows = robj.NULL)
-        layout = '''
-        A
-        A
-        B'''
-
-        g=patchwork.wrap_plots(A=g ,B=gtab, design=layout)
-        print(g, flush=True)
-        return g
-
-
-    def __plot_2prop_fixed_design__(self, g, x, y, color, shape, size, tab):
-        g = (
-            g
-            + gg.geom_point(gg.aes_string(x=x, y=y,
-                                          colour=color,
-                                          shape=shape,
-                                          group=size
-                                          ),
-                             size=3.5, alpha=.4, position="identity",
-                            data=tab.query(f"design=='Fixed design'")) 
-            + gg.geom_line(gg.aes_string(x=x, y=y, group=robj.NULL, colour=color),
-                           size=.6,
-                            data=tab.query(f"design=='Fixed design'")) 
-        )
-        return g
-
-    def __plot_2prop_sequence_design__(self, g, x, y,
-                                       color, shape, size, 
-                                       group_seq_design,
-                                       tab,
-                                       design):
-        tab_expected=eDataFrame()
-        if design in ['sequence', 'both']:
-            tab_expected=(
-                tab
-                .query(f"design=='Group sequence'")
-                .select_cols(names=['prop2', 'sample_size_group1_H1expected',
-                                    'design', 'diff'])
-                .mutate_rowwise({'design': lambda col: f"{col['design']} (expected)"})
-                .mutate({'group_seq_design': lambda col: col['diff']})
-                .drop_duplicates()
-            )
-        # 
-        alpha=.4 if design=='sequence' else .1
-        g = (
-            g
-            + gg.geom_point(gg.aes_string(x=x, y=y,
-                                          colour=color,
-                                          shape=shape,
-                                          group=size
-                                          ),
-                             size=2.5, alpha=alpha, position="identity",
-                            data=tab.query(f"design!='Fixed design'")) 
-            + gg.geom_line(gg.aes_string(x=x, y=y, group=group_seq_design, colour=color),
-                           size=.6, alpha=alpha, linetype=2,
-                           data=tab.query(f"design!='Fixed design'")) 
-            # 
-            + gg.geom_point(gg.aes_string(x=x, y='sample_size_group1_H1expected',
-                                          shape=shape,
-                                          colour=color),
-                           size=3, alpha=alpha+.1, linetype=1,
-                           data=tab_expected) 
-            + gg.geom_line(gg.aes_string(x=x, y='sample_size_group1_H1expected',
-                                         group=group_seq_design, colour=color),
-                           size=.6, alpha=alpha+.1, linetype=1,
-                           data=tab_expected) 
-        )
-        return g
-
-
-    def __plot_select_design__(self, design=None, tab=None):
-        if design=='fixed':
-            design=['Fixed design']
-            # 
-        elif design=='sequence':
-            design=['Group sequence']
-            # 
-        elif design=='both':
-            design=['Group sequence', 'Fixed design']
-            # 
-        if tab is None:
-            res=self.data.select_rows(query=f"design=={design}")
-        else:
-            res=tab.select_rows(query=f"Design=={design}")
-        return res
-        
-    # def __plot_2prop__(self):
-    #     group_diff_label='Group difference ($\pi_t - \pi_c$)'
-    #     taba = (
-    #         self
-    #         .data
-    #         .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
-    #                                                 'sample_size_group2'],
-    #                       var_name='Group', value_name='Sample size', ignore_index=True)
-    #         .replace({'Group':{'sample_size_group1':"Reference (e.g. control group)",
-    #                            'sample_size_group2':'Interest (e.g. treatment group)'}} ,
-    #                  regex=False, inplace=False)
-    #         .rename(columns={'diff':group_diff_label}, inplace=False)
-    #         .mutate({group_diff_label: lambda col: round(col[group_diff_label], 4)})
-    #     )
-    #     tab=taba.query(f"design=='Single stop'")
-    #     # 
-    #     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=[10, 6], tight_layout=True)
-    #     sns.scatterplot(x='prop2', y='Sample size', data=tab,
-    #                     style='Group', hue=group_diff_label, palette='RdBu',s=70,
-    #                     ax=ax)
-    #     sns.lineplot(x='prop2', y='Sample size', data=tab,
-    #                     style='Group', hue=group_diff_label, palette='RdBu',
-    #                     ax=ax, alpha=.3, legend=False)
-    #     # 
-    #     ax.set_xlabel("Proportion of 'positive' outcome cases (Y=1) "+\
-    #                   'in the group of interest ($\pi_t$)')
-    #     ax.set_ylabel('Sample size required to detect the difference')
-    #     # 
-    #     # grid
-    #     ax.grid(b=None, which='major', axis='both', linestyle='-', alpha=.3)
-    #     ax.set_axisbelow(True) # to put the grid below the plot
-    #     # legend
-    #     handles, labels = ax.get_legend_handles_labels()
-    #     leg = ax.legend(loc='upper right')
-    #     leg._legend_box.align = "left"
-    #     # -------
-    #     # Splines (axes lines)
-    #     # -------
-    #     ax.spines['bottom'].set_visible(True)
-    #     ax.spines['left'].set_visible(True)
-    #     ax.spines['right'].set_visible(False)
-    #     ax.spines['top'].set_visible(False)
-    #     title = "Sample size calculation"
-    #     subtitle = ("Info:  "+
-    #                 f"$\\alpha$: {self.alpha}; "+
-    #                 f"Power ($\\beta$): {self.power}; "+
-    #                 f"Test : {self.type}; "+
-    #                 f"Two-sided : {self.two_tail}; "+
-    #                 f"Ratio between sample sizes in each group : {self.ratio}"
-    #                 )
-
-
-    #     # tabgd=taba.query(f"design=='Group sequence'")
-    #     # print(tabgd)
-    #     # sns.scatterplot(x='prop2', y='Sample size', data=tabgd,
-    #     #                 hue=group_diff_label, palette='RdBu',s=20,
-    #     #                 legend=False,
-    #     #                 alpha=.1,
-    #     #                 ax=ax)
-    #     # -----
-    #     # Title
-    #     # -----
-    #     plt.subplots_adjust(top=.78)
-    #     xcoord=-.07
-    #     ycoord=1.13
-    #     yoffset=.07
-    #     ax.annotate(title, xy=(xcoord, ycoord),
-    #                xytext=(xcoord, ycoord), xycoords='axes fraction',
-    #                        size=15, alpha=.6)
-    #     ax.annotate(subtitle, xy=(xcoord, ycoord-yoffset),
-    #                xytext=(xcoord, ycoord-yoffset), xycoords='axes fraction',
-    #                        size=11, alpha=.6)
-    #     # maximum value
-    #     max_sample_sizes = (
-    #         tab
-    #         .groupby([group_diff_label, 'Group'])
-    #         .apply(lambda x: x.nlargest(1, columns=['Sample size']))
-    #     )
-    #     for idx, row in max_sample_sizes.iterrows():
-    #         x = row['prop2']
-    #         y = row['Sample size']
-    #         group = row['Group']
-    #         # 
-    #         va = 'bottom' if 'Reference' in group else 'top'
-    #         txt = f"Max: {int(row['Sample size']):,}\n({group})"
-    #         txt = f'\n{txt}' if va == 'top' else f"{txt}\n"
-    #         color='red' if va == 'top' else 'green'
-    #         # 
-    #         ax.scatter(x, y, s=60, color=color)
-    #         ax.text(x, y, s=txt,
-    #                 ha='center', va=va, ma='center',
-    #                 fontdict=dict(weight='normal', style='italic',
-    #                               color=color, fontsize=10, alpha=1))
-    #     return ax
-        
-
-# *** misc
-
-    def get_design(self, value_group1, diff, raw_fit=False, summary=True):
-        '''
-        Print output for a specific design obtained from value of the output
-        for group 1 and the difference in the output value from this group
-        and the other one
-
-        Input
-        -----
-
-        value_group1   value of the output for the group 1 (e.g., output proportion
-                       in the control group in a 2 proportion test).
-
-        diff           difference in the value of the output between groups
-
-        raw_fit        boolean print the raw R output instead of the tidy version
-
-        summary        boolean, used only when 'raw_fit=True'. Print summary only
-        
-        '''
-        tab=eDataFrame()
-        if self.type=='2prop':
-            tab=(
-                self
-                .data
-                .select_rows(query=f"prop1=={value_group1}")
-                .select_rows(query=f"diff=={diff}")
-            )
-        if tab.nrow==0:
-            tab = power(diff=diff, 
-                        alpha=self.alpha,
-                        power=self.power,
-                        ratio=self.ratio,
-                        seq_design=self.seq_design,
-                        type2prop=self.type2prop,
-                        type=self.type
-                        )
-            tab = tab.data
-        if not raw_fit:
-            tab = self.__get_main_columns__(tab)
-            print(tab.to_string(index=False, max_colwidth=13,
-                                formatters={
-                                    'N (group c)' : lambda x: '%.1f' % x,
-                                    'N (group t)' : lambda x: '%.1f' % x,
-                                    'N (total)'   : lambda x: '%.1f' % x,
-                                    'Sig. level'  : lambda x: '%.4f' % x,
-                                    'Power'       : lambda x: '%.4f' % x
-                                })
-                  )
-        else:
-            res=tab.fit.reset_index(drop=True)[0]
-            res_design=tab.fit_design.reset_index(drop=True)[0]
-            print(res_design)
-            if not summary:
-                print(res, flush=True)
-            else:
-                print(base.summary(res))
-
-
-    def get_sample_size_max(self, design='Fixed design'):
-        maxvalue=self.data.query(f"design=='Fixed design'").select_cols(names=['sample_size_total']).max()[0]
-        if self.type=='2prop':
-            group1='prop1'
-            group2='prop2'
-        tab_maximum = (
-            self
-            .data
-            .query(f"sample_size_total=={maxvalue}")
-            .select_cols(names=[group1, group2, 'diff'])
-            .join(self.data, how='left', conflict="keep_all", suffixes=["_x", "_y"] )
-            .mutate({
-                'sample_size_group1': lambda col: round(col['sample_size_group1'], 0),
-                'sample_size_group2': lambda col: round(col['sample_size_group2'], 0),
-                'sample_size_total' : lambda col: round(col['sample_size_total'], 0),
-                'ntotal'            : lambda col: round(col['sample_size_total'], 0), # for costs
-                'critical_zvalue'   : lambda col: round(col['critical_zvalue'], 4),
-                'siglevels'         : lambda col: round(col['siglevels'], 6),
-                'stopProb'          : lambda col: round(col['stopProb'], 6),
-            })
-        )
-        return tab_maximum
-
-        
-# ** methods (hidden)
-# *** 2prop
-
-    def __2prop__(self):
-        prop1s=self.__2prop_get_prop1__()
-        res=eDataFrame()
-        for diffi in self.diff:
-            prop2s = prop1s + diffi
-            for prop1, prop2 in zip(prop1s, prop2s):
-                if 0 < prop2 <1:
-                    tmp = self.__2prop_seq_design__(prop1=prop1,
-                                                    prop2=prop2,
-                                                    diffi=diffi)
-
-                    res = res.bind_row(tmp)
-        return res
-
-    def __2prop_seq_design__(self,
-                             prop1,
-                             prop2,
-                             diffi):
-        # 
-        tail = 2 if self.two_tail else 1
-        # 
-        gdesign_info=rpact.getDesignGroupSequential(
-            sided = tail,
-            alpha = self.alpha,
-            beta = 1-self.power,
-            typeOfDesign = self.seq_design['typeOfDesign']
-            # 
-            # informationRates = self.seq_design["stops_at"]
-            ## futilityBounds = c(0, 0.05)
-        )
-        gdesign=rpact.getSampleSizeRates(gdesign_info,
-                                         pi1 = prop1,
-                                         pi2 = prop2)
-        es_cohen_hi = pwr2prop.proportion_effectsize(
-            prop1=prop2,
-            prop2=prop1
-        ) # = 2*asin(sqrt(p1))-2*asin(sqrt(p2)) (Cohen, 1988)
-        # 
-        # get R slots 
-        # -----------
-        slot1 = gdesign.slots['.xData']
-        slot2 = gdesign.slots['.xData']
-        slot2 = slot2.find('.design')
-        slot2 = slot2.slots['.xData']
-        # 
-        fixed_design_group1        = slot1.find('nFixed1')
-        fixed_design_group2        = slot1.find('nFixed2')
-        peeks                      = slot2.find('stages')
-        peeks                      = slot2.find('stages')
-        critical_zvalues           = slot2.find('criticalValues')
-        sigLevels                  = slot1.find('criticalValuesPValueScale').flatten()
-        alphaSpent                 = slot2.find('alphaSpent')
-        numberOfSubjects           = slot1.find('numberOfSubjects').flatten()
-        numberOfSubjects1          = slot1.find('numberOfSubjects1').flatten()
-        numberOfSubjects2          = slot1.find('numberOfSubjects2').flatten()
-        expectedNumberOfSubjectsH1 = slot1.find('expectedNumberOfSubjectsH1').flatten()[0]
-        infoRates                  = slot1.find('informationRates').flatten()
-        stopProb                   = gdesign.slots['.xData'].find('rejectPerStage').flatten()
-        # stopProb: probability of rejecting H0 on that stage (add up to power level)
-        npeeks=len(peeks)
-        # 
-        base = eDataFrame({
-            "prop1"      : [prop1],
-            "prop2"      : [prop2],
-            'diff'       : [diffi],
-            'es_cohen_h' : [es_cohen_hi],
-            'pwr'        : [self.power],
-            'alpha'      : [self.alpha],
-            'two-sided'  : [self.two_tail],
-            'fit'        : [gdesign],
-            'fit_design' : [gdesign_info]
-        })
-        seq_design = eDataFrame(
-            {
-                "sample_size_group1"            : numberOfSubjects1,
-                "sample_size_group2"            : numberOfSubjects2,
-                "sample_size_total"             : numberOfSubjects,
-                "sample_size_group1_H1expected" : [expectedNumberOfSubjectsH1/2]*npeeks,
-                "sample_size_total_H1expected"  : [expectedNumberOfSubjectsH1]*npeeks,
-                "sample_size_peek_perc"         : infoRates,
-                "peek"                          : peeks,
-                "critical_zvalue"               : critical_zvalues,
-                "siglevels"                     : sigLevels,
-                "siglevelsCum"                  : alphaSpent,
-                "stopProb"                      : stopProb,
-                "design"                        : 'Group sequence'
-                # 
-            }
-        )
-        fixed_design = eDataFrame(
-            {
-                "sample_size_group1"            : fixed_design_group1 ,
-                "sample_size_group2"            : fixed_design_group2 ,
-                "sample_size_total"             : fixed_design_group1+fixed_design_group2,
-                "sample_size_group1_H1expected" : fixed_design_group1,
-                "sample_size_total_H1expected"  : fixed_design_group1+fixed_design_group2,
-                "sample_size_peek_perc"         : 1,
-                "peek"                          : np.max(peeks),
-                "critical_zvalue"               : np.abs(qnorm.ppf(self.alpha/tail)),
-                "siglevels"                     : self.alpha,
-                "siglevelsCum"                  : self.alpha,
-                "stopProb"                      : self.power,
-                "design"                        : 'Fixed design'
-                # 
-            }
-        )
-        tab= (base
-              .bind_col((seq_design .bind_row(fixed_design)), ignore_index=False)
-              .fillna(inplace=False, axis=0, method="ffill")
-              )
-        return tab
-
-    def __2prop_get_prop1__(self):
-        if not self.type2prop['prop1']:
-            prop1s = np.array([0.01] +
-                              [round(x, 2) for x in list(np.linspace(0.0, 1, 21))][1:-1] +
-                              [0.99])
-        else:
-            prop1s=self.type2prop['prop1']
-            if isinstance(prop1s, float):
-                prop1s = np.array([prop1s])
-            if isinstance(prop1s, list):
-                prop1s = np.array(prop1s)
-        return prop1s
-
-
-
-# *** misc
-
-    def __get_main_columns__(self, tab, extra_columns={}):
-        tab=(
-            tab
-            .select_cols(names={'design'            : 'Design',
-                                'peek'              : 'Peek',
-                                'prop1'             : "pi_c",
-                                'prop2'             : "pi_t",
-                                'sample_size_group1': "N (group c)",
-                                'sample_size_group2': "N (group t)",
-                                'sample_size_total' : "N (total)",
-                                'critical_zvalue'   : "z-value",
-                                'siglevels'         : "Sig. level",
-                                'stopProb'          : 'Power',
-                                } | extra_columns)
-        )
-        return eDataFrame(tab)
-
-
 
 # * Regression models
 # *** class
@@ -962,17 +338,47 @@ class regression():
                 (term is the column with the covariates name)
 
         vcov   a string or list with the variance-covariance matrix to use
-               for the standard errors of the coefficients. It a list is used,
+               for the standard errors of the coefficients.
+               It can be used to compute robust and clustered std. errors.
+
+               For robust std errors, if a list is used,
                the models will use the covariance matrix in the order provided.
+               It can be used to compute robust standard errors
+               Uses R modelsummary in the background. This is an
+               argument for that package.
+               Ex: vcov="robust"
+                   vcov=["robust", 'classica']
+
+               For clustered std. errors, use a string with a right-hand
+               formula with the variables to cluster. Note that
+               the cluster variables must be included in the regression
+               Ex: vcov = "~ time + state"
+                   vcov = "~ time"
+        
+               
+        
+        cluster string with the name of the variables to compute
+                clustered standard errors
 
         output_collect  boolean. If true, return a DataFrame with the summary
 
         '''
         res=None
+        # 
         fn=kws.get("fn", None)
+        if fn:
+            kws.pop('fn')
+            if isinstance(fn, pathlib.PurePath):
+                fn = str(fn)
+            fn = os.path.expanduser(fn)
+        # 
         output_format=kws.get("output_format", None)
+        if output_format:
+            kws.pop('output_format')
+        # 
         output_collect=kws.get("output_collect", None)
         replace=kws.get("replace", None)
+        #
         # 
         models=self.models if not models else models
         models=[models] if isinstance(models, str) else models
@@ -980,8 +386,18 @@ class regression():
             models = {model:model for model in models}
 
         # basic table
+        # save latex table
+        # if output_format=='latex' or fn:
+        #     tab_latex=(
+        #         self.
+        #         __get_summary_df__(output_collect=True, *args, **kws)
+        #         # .select_cols(names={'term':'term'}|models )
+        #     )
+        #     print(tab_latex)
+        # # 
         tab=(
-            self.__get_summary_df__(output_collect=True)
+            self.
+            __get_summary_df__(output_collect=True, *args, **kws)
             .select_cols(names={'term':'term'}|models )
         )
         if replace:
@@ -1050,15 +466,16 @@ class regression():
 # **** predict
 
     def predict(self,
-                mods=None,
+                models=None,
                 predictor=None,
                 predictor_values=robj.NULL,
                 covars_at=robj.NULL,
                 newdata=None
                 ):
         '''
-        See documentation for pandasci.models.rtools.predict()
+        See documentation for pandasci.models.plot_predict()
         '''
+        mods=models
         predictor=predictor.replace('`', '')
         models_containing_predictor = self.__get_models_containing_variable__(predictor)
         assert models_containing_predictor, f'No model with predictor {predictor}'
@@ -1181,10 +598,12 @@ class regression():
         regex         a regular expression to match with the labels of the 
                       models to print. Ignored if models is used.
 
-        coefs         a list or dictionary
-                      It follows the same structure of the 'input' term of
-                      the parameter 'models' in the models.regression()
-                      function
+        coefs         a list with the names of the coefficients to plot.
+                      If None, it plots all the coefficients. If not,
+                      the names in the list should match those that appear 
+                      in the column 'term' in the <mod>.coefs_df, where
+                      <mod> is an object returned by the models.regression()
+                      function.
                       Note: for interactions, the coefficient labels must be
                             <varname>:<varname><category> or <varname>:<varname>
 
@@ -1298,14 +717,21 @@ class regression():
         facet  = facet if not facet else self.__plot_get_replace_dict__(facet) 
         color  = color if not color else self.__plot_get_replace_dict__(color) 
         shape  = shape if not shape else self.__plot_get_replace_dict__(shape) 
+        # -----------------------------
         # get data 
-        tmp=self.__plot_coef_prepare_data__(models, coef_labels, coef_wrap,
-                                            text, color, facet, shape,
+        tmp=self.__plot_coef_prepare_data__(models, coef_labels,
+                                            coef_wrap, text, color,
+                                            facet, shape,
                                             digits=digits)
         if switch_axes:
             order = tmp[x].cat.categories[::-1]
-            tmp[x].cat.set_categories(new_categories=order, ordered=False, inplace=True)
+            tmp[x].cat.set_categories(new_categories=order,
+                                      ordered=False, inplace=True)
+        # # replace * with x in interactions
+        tmp=self.__plot_coef_set_interaction_str__(tmp,
+                                                   interaction_str='&times;')
         # return tmp
+        # -----------------------------
         # plot 
         # ----
         dodge=1/len(self.labels) if not dodge else dodge
@@ -1576,7 +1002,7 @@ class regression():
         caption['title'] = caption.get('title', robj.NULL)
         # 
         pred=self.predict(
-            mods=models,
+            models=models,
             predictor=predictor,
             predictor_values=predictor_values,
             covars_at=covars_at,
@@ -2446,8 +1872,13 @@ class regression():
         output_format=kws.get("output_format", 'data.frame')
         if kws.get("fn", False):
             print(f"\nNote: 'fn' provided. Format will use fn extension.\n", flush=True)
+            # 
             output_format=kws.get("fn", output_format)
+            if isinstance(output_format, pathlib.PurePath):
+                output_format=str(output_format)
+        # 
         vcov=kws.get("vcov", 'classical')
+        vcov=robj.Formula(vcov) if "~" in vcov else vcov
         footnotes=kws.get("footnotes", robj.NULL)
         # 
         models_to_print=kws.get("labels", None)
@@ -2462,7 +1893,7 @@ class regression():
                                                 statistic='({conf.low}, {conf.high})',
                                                 # + p < 0.1, * p < 0.05, ** p < 0.01, *** p < 0.001
                                                 stars=True, ## c('*' = .1, '**' = .05, "***"=0.01),
-                                                # vcov = vcov, #"classical", "robust", "stata", "HC4", "HC0",
+                                                # vcov = vcov, 
                                                 ## 
                                                 coef_omit = "Intercept",
                                                 ## coef_rename=c('vs'='first'),
@@ -2479,7 +1910,8 @@ class regression():
                                            statistic='({conf.low}, {conf.high})',
                                            # + p < 0.1, * p < 0.05, ** p < 0.01, *** p < 0.001
                                            stars=True, ## 
-                                           vcov = vcov, #"classical", "robust", "stata", "HC4", "HC0",
+                                           vcov = vcov,
+                                           # cluster = cluster,
                                            ## 
                                            coef_omit = "Intercept",
                                            ## coef_rename=c('vs'='first'),
@@ -2671,6 +2103,7 @@ class regression():
         #     tmp=self.__plot_coef_order_terms__(coef_labels, coef_wrap,
         #                                        wrap_char="<br>",
         #                                        switch_axes=switch_axes)
+        
         # wrap labels 
         # -----------
         if coef_wrap:
@@ -2701,6 +2134,19 @@ class regression():
                 .mutate_rowwise({'sig_text': lambda x: f"{round(x['estimate'], digits)} {x['sig']}"})
             )
         return tmp
+
+
+    def __plot_coef_set_interaction_str__(self, tab,
+                                          interaction_str='x'):
+        cat_old = list(tab.term.cat.categories)
+        cat_new = [re.sub(pattern='\\*', repl=interaction_str,
+                          string=co) for
+                   co in cat_old]
+        for co, cn in zip(cat_old, cat_new):
+            if cn!=co:
+                tab.term=tab.term.cat.rename_categories({co: cn})
+        return tab
+
 
     def __plot_get_replace_dict__(self, d):
         newdict={}
@@ -3824,24 +3270,25 @@ class regression():
 
     def __add_ordered_coefs__(self, tab, coef_labels=None,
                               coef_wrap=None, wrap_char=None):
-        if not coef_labels:
-            coef_labels={}
-            groups=[]
-            for idx, row in self.coefs_df.iterrows():
-                group=f"<b>{row['value_group']}"
-                groups+=[group] if group not in groups else []
-                term = row['term']
-                if term not in coef_labels.get(group, []):
-                    coef_labels[group] = coef_labels.get(group, []) + [term]
-            coef_labels
-            groups
-        else:
-            print("MUST BE IMPLEMENTED!!")
+
+        coef_labels_to_select=coef_labels
+        coef_labels={}
+        groups=[]
+        for idx, row in self.coefs_df.iterrows():
+            group=f"<b>{row['value_group']}"
+            groups+=[group] if group not in groups else []
+            term = row['term']
+            if term not in coef_labels.get(group, []):
+                coef_labels[group] = coef_labels.get(group, []) + [term]
+            
         # dict->list
-        order=self.__plot_coef_order_terms__(coef_labels=self.coefs_dict_exp)
-        # print(coef_labels)
-        # print(order)
-        # print(groups)
+        order=self.__plot_coef_order_terms__(coef_labels=
+                                             self.coefs_dict_exp)
+        if coef_labels_to_select:
+            order=[v for v in order if
+                   v in coef_labels_to_select or
+                   bool(re.search(pattern="\<b\>", string=v))
+                   ]
 
         groups_df=(
             # ds.
@@ -3859,6 +3306,7 @@ class regression():
             .mutate_categorical(var='terms_dict', cats=order[::-1],
                                 ordered=True, wrap=False)
             .sort_values(['terms_dict'], ascending=True)
+            .select_rows(query=f"term == {order}")
         )
         value_label_final_cats=(
             res
@@ -3931,7 +3379,26 @@ class regression():
         return order
 
     
-# * PCA
+# * Causal Analysis and Inference
+# ** DiD
+
+class did():
+    def __init__(self):
+        # self.multinomial        = None
+        # self.labels             = []
+        # self.models             = []
+        # self.engine             = {}
+        # self.na                 = {}
+        # self.formula            = {}
+        # self.family             = {}
+        self.data               = {}
+        self.results            = eDataFrame()
+        # self.variables          = eDataFrame()
+        # self.variables_dict_raw = {}
+
+# * Machine Learning
+# ** Dimension Reduction
+# *** PCA
 
 class pca():
     def __init__(self, data, *args, **kws):
@@ -4131,7 +3598,639 @@ class pca():
 
 
 
-# * chisquared
+# * Power and Sample size
+# ** class
+
+class power():
+    def __init__(self,
+                 diff,
+                 alpha=0.05,
+                 power=0.8,
+                 two_tail=True,
+                 ratio=1,
+                 seq_design={
+                     'typeOfDesign': 'OF',
+                     'stops_at'    :[.33, .66, 1]
+                 },
+                 type=None,
+                 type2prop={"prop1":None},
+                 ):
+        '''
+        Compute the sample size
+
+        Input 
+        -----
+        diff     : difference between average value of the outcome in the
+                   two groups (e.g., different in proportions, mean, etc.)
+        alpha    : significance level
+        power    : power of the test
+        two_tail : boolean. If True, use two-tail test
+        ratio    : Sample size ratio, nobs2 = ratio * nobs1. Use 1 if the
+                   sample size is the same in the two groups
+        type     : sting with the type of test. Options are:
+
+                   2prop :  used when you have two groups and
+                            you want to know if the proportions of each group are
+                            different from one another.
+                            Examples: 
+                            -------
+                            a. Is the proportion of men in favor of gender equality
+                               different from the proportion of woman in favor of
+                               gender equality
+                            b. Is proportion of cases with outcome "A" different 
+                               different in the treatment and control group?
+
+        seq_design a dictionary with parameters for the R package 'rpact' for
+                   group sequential design. The core parameters are:
+
+                   typeOfDesign  string with function to compute the critical
+                                 values at each peek. Default is 'OF'
+                                 O’Brien-Fleming (Proschan et al., 2006).
+                                 See rpact for other options
+        
+                   stops_at      Ration of the total sample to peek [.33, .66, 1]
+
+        type*   : a dictionary with type-specific arguments. The * can be:
+          
+                  2prop : prop1  a list or float with the proportion(s)
+                          presumed for group 1
+        
+
+        '''
+        assert type, "'type' must be provided"
+        assert diff, "The effect size 'diff' must be provided"
+        
+        if isinstance(diff, float):
+            diff = [diff]
+        self.diff=diff
+        self.alpha=alpha
+        self.power=power
+        self.ratio=ratio
+        self.two_tail=two_tail
+        self.type=type
+        self.data=None
+        self.seq_design=seq_design
+        self.type2prop=type2prop
+        if type=='2prop':
+            self.data = self.__2prop__()
+
+
+
+# ** methods
+# *** default
+
+    def __str__(self):
+        print(self.data, flush=True)
+        return None
+
+    def __repr__(self):
+        print(self.data, flush=True)
+        return ''
+
+
+    
+# *** plot
+
+    def plot(self, cost_per_observation=None, design='both'):
+        '''
+        Plot the results of the power analysis
+
+        # Input 
+        # -----
+        cost_per_observation  number indicating the cost per
+                              observation. If provided,
+                              plot the total cost.
+
+        design    string. It can be,
+                  - 'fixed'      plot only the fixed design
+                  - 'sequential' plot only the sequential design
+                  - 'both'       Default. Plot the fixed and the
+                                 sequential design
+        '''
+        if self.type=='2prop':
+            ax = self.__plot_2prop__(cost_per_observation, design)
+        return ax
+
+
+    def __plot_2prop__(self, cost_per_observation, design):
+
+        vars=['prop1', 'prop2', 'sample_size_group1', 'sample_size_group2',
+              'design', 'sample_size_group1_H1expected', 
+              'diff', 'peek']
+        # collecting data to plot 
+        # ----------------------- 
+        tab=self.__plot_select_design__(design)
+        tab=(
+            tab
+            .select_cols(names=vars)
+            .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
+                                                    'sample_size_group2'],
+                          var_name='group', value_name='sample_size',
+                          ignore_index=True)
+            .mutate_type(col2type={'diff': str} )
+            .mutate_case({
+                 'Treatment group': {
+                     f"(group=='sample_size_group1' )": "0 (e.g., control)", 
+                     f"(group=='sample_size_group2' )": "1 (e.g., treatment)",
+                   }
+             })
+            .combine(cols=['peek', 'diff'], colname='group_seq_design',
+                     sep='_', remove=False)
+        )
+        # 
+        # 
+        tab_maximum = self.get_sample_size_max(design='Fixed design')
+        # 
+        extra_columns={}
+        if cost_per_observation:
+            tab_maximum=(
+                tab_maximum   
+                .mutate({
+                    'Cost': lambda col: round(col['ntotal']*
+                                              cost_per_observation, 2),
+                })
+                .mutate_rowwise({'Cost': lambda col: f"$ {col['Cost']}"})
+            )
+            extra_columns={"Cost":"Cost"}
+        tab_maximum=tab_maximum.drop_cols(names='ntotal')
+        tab_maximum=self.__get_main_columns__(tab_maximum,
+                                              extra_columns=extra_columns)
+
+        x = "prop2"
+        y = "sample_size"
+        color='diff'
+        shape='design'
+        size='`Treatment group`'
+        group_seq_design='group_seq_design'
+        twotailed = 'Yes' if self.two_tail else "No"
+        labx= latex2exp.TeX("Proportion of 'positive' outcome cases (Y=1) "+\
+                            'in the group of interest ($\pi_t$)')
+        laby='Sample size required to detect the difference'
+        labcolor= latex2exp.TeX('Group difference ($\\pi_t - \\pi_c$)')
+        labshape='Design'
+        title = "Sample size calculation"
+        subtitle = latex2exp.TeX("Info:  "+
+                    f"$\\alpha$: {self.alpha}; "
+                    f"Power ($\\beta$): {self.power}; "+
+                    f"Test : {self.type}; "+
+                    f"Two-sided : {self.two_tail}; "+
+                    f"Ratio between sample sizes in each group : {self.ratio}"
+                    )
+        # Plot 
+        # ----
+        g = gg.ggplot(tab)
+        if design in ['fixed', 'both']:
+            g = self.__plot_2prop_fixed_design__(g, x, y, color, shape, size, tab)
+        if design in ['sequence', 'both']:
+            g = self.__plot_2prop_sequence_design__(g, x, y,
+                                                    color, shape, size, 
+                                                    group_seq_design,
+                                                    tab,
+                                                    design)
+            # 
+        g = (
+            g
+            + gg.labs(
+                x        = labx,
+                y        = laby,
+                color    = labcolor, 
+                shape    = labshape,
+                fill     = robj.NULL,
+                linetype = robj.NULL,
+                title    = title,
+                subtitle = subtitle,
+                caption  = robj.NULL
+                )
+            # + gg.scale_size_manual(cols)
+            + gg.scale_colour_brewer(palette="Set1") 
+            + gg.theme_bw()
+            + ggtheme()
+            + ggguides()
+        )
+
+        # table 
+        # -----
+        tab_maximum=self.__plot_select_design__(tab=tab_maximum, design=design)
+        gtab = gridExtra.tableGrob(tab_maximum, rows = robj.NULL)
+        layout = '''
+        A
+        A
+        B'''
+
+        g=patchwork.wrap_plots(A=g ,B=gtab, design=layout)
+        print(g, flush=True)
+        return g
+
+
+    def __plot_2prop_fixed_design__(self, g, x, y, color, shape, size, tab):
+        g = (
+            g
+            + gg.geom_point(gg.aes_string(x=x, y=y,
+                                          colour=color,
+                                          shape=shape,
+                                          group=size
+                                          ),
+                             size=3.5, alpha=.4, position="identity",
+                            data=tab.query(f"design=='Fixed design'")) 
+            + gg.geom_line(gg.aes_string(x=x, y=y, group=robj.NULL, colour=color),
+                           size=.6,
+                            data=tab.query(f"design=='Fixed design'")) 
+        )
+        return g
+
+    def __plot_2prop_sequence_design__(self, g, x, y,
+                                       color, shape, size, 
+                                       group_seq_design,
+                                       tab,
+                                       design):
+        tab_expected=eDataFrame()
+        if design in ['sequence', 'both']:
+            tab_expected=(
+                tab
+                .query(f"design=='Group sequence'")
+                .select_cols(names=['prop2', 'sample_size_group1_H1expected',
+                                    'design', 'diff'])
+                .mutate_rowwise({'design': lambda col: f"{col['design']} (expected)"})
+                .mutate({'group_seq_design': lambda col: col['diff']})
+                .drop_duplicates()
+            )
+        # 
+        alpha=.4 if design=='sequence' else .1
+        g = (
+            g
+            + gg.geom_point(gg.aes_string(x=x, y=y,
+                                          colour=color,
+                                          shape=shape,
+                                          group=size
+                                          ),
+                             size=2.5, alpha=alpha, position="identity",
+                            data=tab.query(f"design!='Fixed design'")) 
+            + gg.geom_line(gg.aes_string(x=x, y=y, group=group_seq_design, colour=color),
+                           size=.6, alpha=alpha, linetype=2,
+                           data=tab.query(f"design!='Fixed design'")) 
+            # 
+            + gg.geom_point(gg.aes_string(x=x, y='sample_size_group1_H1expected',
+                                          shape=shape,
+                                          colour=color),
+                           size=3, alpha=alpha+.1, linetype=1,
+                           data=tab_expected) 
+            + gg.geom_line(gg.aes_string(x=x, y='sample_size_group1_H1expected',
+                                         group=group_seq_design, colour=color),
+                           size=.6, alpha=alpha+.1, linetype=1,
+                           data=tab_expected) 
+        )
+        return g
+
+
+    def __plot_select_design__(self, design=None, tab=None):
+        if design=='fixed':
+            design=['Fixed design']
+            # 
+        elif design=='sequence':
+            design=['Group sequence']
+            # 
+        elif design=='both':
+            design=['Group sequence', 'Fixed design']
+            # 
+        if tab is None:
+            res=self.data.select_rows(query=f"design=={design}")
+        else:
+            res=tab.select_rows(query=f"Design=={design}")
+        return res
+        
+    # def __plot_2prop__(self):
+    #     group_diff_label='Group difference ($\pi_t - \pi_c$)'
+    #     taba = (
+    #         self
+    #         .data
+    #         .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
+    #                                                 'sample_size_group2'],
+    #                       var_name='Group', value_name='Sample size', ignore_index=True)
+    #         .replace({'Group':{'sample_size_group1':"Reference (e.g. control group)",
+    #                            'sample_size_group2':'Interest (e.g. treatment group)'}} ,
+    #                  regex=False, inplace=False)
+    #         .rename(columns={'diff':group_diff_label}, inplace=False)
+    #         .mutate({group_diff_label: lambda col: round(col[group_diff_label], 4)})
+    #     )
+    #     tab=taba.query(f"design=='Single stop'")
+    #     # 
+    #     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=[10, 6], tight_layout=True)
+    #     sns.scatterplot(x='prop2', y='Sample size', data=tab,
+    #                     style='Group', hue=group_diff_label, palette='RdBu',s=70,
+    #                     ax=ax)
+    #     sns.lineplot(x='prop2', y='Sample size', data=tab,
+    #                     style='Group', hue=group_diff_label, palette='RdBu',
+    #                     ax=ax, alpha=.3, legend=False)
+    #     # 
+    #     ax.set_xlabel("Proportion of 'positive' outcome cases (Y=1) "+\
+    #                   'in the group of interest ($\pi_t$)')
+    #     ax.set_ylabel('Sample size required to detect the difference')
+    #     # 
+    #     # grid
+    #     ax.grid(b=None, which='major', axis='both', linestyle='-', alpha=.3)
+    #     ax.set_axisbelow(True) # to put the grid below the plot
+    #     # legend
+    #     handles, labels = ax.get_legend_handles_labels()
+    #     leg = ax.legend(loc='upper right')
+    #     leg._legend_box.align = "left"
+    #     # -------
+    #     # Splines (axes lines)
+    #     # -------
+    #     ax.spines['bottom'].set_visible(True)
+    #     ax.spines['left'].set_visible(True)
+    #     ax.spines['right'].set_visible(False)
+    #     ax.spines['top'].set_visible(False)
+    #     title = "Sample size calculation"
+    #     subtitle = ("Info:  "+
+    #                 f"$\\alpha$: {self.alpha}; "+
+    #                 f"Power ($\\beta$): {self.power}; "+
+    #                 f"Test : {self.type}; "+
+    #                 f"Two-sided : {self.two_tail}; "+
+    #                 f"Ratio between sample sizes in each group : {self.ratio}"
+    #                 )
+
+
+    #     # tabgd=taba.query(f"design=='Group sequence'")
+    #     # print(tabgd)
+    #     # sns.scatterplot(x='prop2', y='Sample size', data=tabgd,
+    #     #                 hue=group_diff_label, palette='RdBu',s=20,
+    #     #                 legend=False,
+    #     #                 alpha=.1,
+    #     #                 ax=ax)
+    #     # -----
+    #     # Title
+    #     # -----
+    #     plt.subplots_adjust(top=.78)
+    #     xcoord=-.07
+    #     ycoord=1.13
+    #     yoffset=.07
+    #     ax.annotate(title, xy=(xcoord, ycoord),
+    #                xytext=(xcoord, ycoord), xycoords='axes fraction',
+    #                        size=15, alpha=.6)
+    #     ax.annotate(subtitle, xy=(xcoord, ycoord-yoffset),
+    #                xytext=(xcoord, ycoord-yoffset), xycoords='axes fraction',
+    #                        size=11, alpha=.6)
+    #     # maximum value
+    #     max_sample_sizes = (
+    #         tab
+    #         .groupby([group_diff_label, 'Group'])
+    #         .apply(lambda x: x.nlargest(1, columns=['Sample size']))
+    #     )
+    #     for idx, row in max_sample_sizes.iterrows():
+    #         x = row['prop2']
+    #         y = row['Sample size']
+    #         group = row['Group']
+    #         # 
+    #         va = 'bottom' if 'Reference' in group else 'top'
+    #         txt = f"Max: {int(row['Sample size']):,}\n({group})"
+    #         txt = f'\n{txt}' if va == 'top' else f"{txt}\n"
+    #         color='red' if va == 'top' else 'green'
+    #         # 
+    #         ax.scatter(x, y, s=60, color=color)
+    #         ax.text(x, y, s=txt,
+    #                 ha='center', va=va, ma='center',
+    #                 fontdict=dict(weight='normal', style='italic',
+    #                               color=color, fontsize=10, alpha=1))
+    #     return ax
+        
+
+# *** misc
+
+    def get_design(self, value_group1, diff, raw_fit=False, summary=True):
+        '''
+        Print output for a specific design obtained from value of the output
+        for group 1 and the difference in the output value from this group
+        and the other one
+
+        Input
+        -----
+
+        value_group1   value of the output for the group 1 (e.g., output proportion
+                       in the control group in a 2 proportion test).
+
+        diff           difference in the value of the output between groups
+
+        raw_fit        boolean print the raw R output instead of the tidy version
+
+        summary        boolean, used only when 'raw_fit=True'. Print summary only
+        
+        '''
+        tab=eDataFrame()
+        if self.type=='2prop':
+            tab=(
+                self
+                .data
+                .select_rows(query=f"prop1=={value_group1}")
+                .select_rows(query=f"diff=={diff}")
+            )
+        if tab.nrow==0:
+            tab = power(diff=diff, 
+                        alpha=self.alpha,
+                        power=self.power,
+                        ratio=self.ratio,
+                        seq_design=self.seq_design,
+                        type2prop=self.type2prop,
+                        type=self.type
+                        )
+            tab = tab.data
+        if not raw_fit:
+            tab = self.__get_main_columns__(tab)
+            print(tab.to_string(index=False, max_colwidth=13,
+                                formatters={
+                                    'N (group c)' : lambda x: '%.1f' % x,
+                                    'N (group t)' : lambda x: '%.1f' % x,
+                                    'N (total)'   : lambda x: '%.1f' % x,
+                                    'Sig. level'  : lambda x: '%.4f' % x,
+                                    'Power'       : lambda x: '%.4f' % x
+                                })
+                  )
+        else:
+            res=tab.fit.reset_index(drop=True)[0]
+            res_design=tab.fit_design.reset_index(drop=True)[0]
+            print(res_design)
+            if not summary:
+                print(res, flush=True)
+            else:
+                print(base.summary(res))
+
+
+    def get_sample_size_max(self, design='Fixed design'):
+        maxvalue=self.data.query(f"design=='Fixed design'").select_cols(names=['sample_size_total']).max()[0]
+        if self.type=='2prop':
+            group1='prop1'
+            group2='prop2'
+        tab_maximum = (
+            self
+            .data
+            .query(f"sample_size_total=={maxvalue}")
+            .select_cols(names=[group1, group2, 'diff'])
+            .join(self.data, how='left', conflict="keep_all", suffixes=["_x", "_y"] )
+            .mutate({
+                'sample_size_group1': lambda col: round(col['sample_size_group1'], 0),
+                'sample_size_group2': lambda col: round(col['sample_size_group2'], 0),
+                'sample_size_total' : lambda col: round(col['sample_size_total'], 0),
+                'ntotal'            : lambda col: round(col['sample_size_total'], 0), # for costs
+                'critical_zvalue'   : lambda col: round(col['critical_zvalue'], 4),
+                'siglevels'         : lambda col: round(col['siglevels'], 6),
+                'stopProb'          : lambda col: round(col['stopProb'], 6),
+            })
+        )
+        return tab_maximum
+
+        
+# ** methods (hidden)
+# *** 2prop
+
+    def __2prop__(self):
+        prop1s=self.__2prop_get_prop1__()
+        res=eDataFrame()
+        for diffi in self.diff:
+            prop2s = prop1s + diffi
+            for prop1, prop2 in zip(prop1s, prop2s):
+                if 0 < prop2 <1:
+                    tmp = self.__2prop_seq_design__(prop1=prop1,
+                                                    prop2=prop2,
+                                                    diffi=diffi)
+
+                    res = res.bind_row(tmp)
+        return res
+
+    def __2prop_seq_design__(self,
+                             prop1,
+                             prop2,
+                             diffi):
+        # 
+        tail = 2 if self.two_tail else 1
+        # 
+        gdesign_info=rpact.getDesignGroupSequential(
+            sided = tail,
+            alpha = self.alpha,
+            beta = 1-self.power,
+            typeOfDesign = self.seq_design['typeOfDesign']
+            # 
+            # informationRates = self.seq_design["stops_at"]
+            ## futilityBounds = c(0, 0.05)
+        )
+        gdesign=rpact.getSampleSizeRates(gdesign_info,
+                                         pi1 = prop1,
+                                         pi2 = prop2)
+        es_cohen_hi = pwr2prop.proportion_effectsize(
+            prop1=prop2,
+            prop2=prop1
+        ) # = 2*asin(sqrt(p1))-2*asin(sqrt(p2)) (Cohen, 1988)
+        # 
+        # get R slots 
+        # -----------
+        slot1 = gdesign.slots['.xData']
+        slot2 = gdesign.slots['.xData']
+        slot2 = slot2.find('.design')
+        slot2 = slot2.slots['.xData']
+        # 
+        fixed_design_group1        = slot1.find('nFixed1')
+        fixed_design_group2        = slot1.find('nFixed2')
+        peeks                      = slot2.find('stages')
+        peeks                      = slot2.find('stages')
+        critical_zvalues           = slot2.find('criticalValues')
+        sigLevels                  = slot1.find('criticalValuesPValueScale').flatten()
+        alphaSpent                 = slot2.find('alphaSpent')
+        numberOfSubjects           = slot1.find('numberOfSubjects').flatten()
+        numberOfSubjects1          = slot1.find('numberOfSubjects1').flatten()
+        numberOfSubjects2          = slot1.find('numberOfSubjects2').flatten()
+        expectedNumberOfSubjectsH1 = slot1.find('expectedNumberOfSubjectsH1').flatten()[0]
+        infoRates                  = slot1.find('informationRates').flatten()
+        stopProb                   = gdesign.slots['.xData'].find('rejectPerStage').flatten()
+        # stopProb: probability of rejecting H0 on that stage (add up to power level)
+        npeeks=len(peeks)
+        # 
+        base = eDataFrame({
+            "prop1"      : [prop1],
+            "prop2"      : [prop2],
+            'diff'       : [diffi],
+            'es_cohen_h' : [es_cohen_hi],
+            'pwr'        : [self.power],
+            'alpha'      : [self.alpha],
+            'two-sided'  : [self.two_tail],
+            'fit'        : [gdesign],
+            'fit_design' : [gdesign_info]
+        })
+        seq_design = eDataFrame(
+            {
+                "sample_size_group1"            : numberOfSubjects1,
+                "sample_size_group2"            : numberOfSubjects2,
+                "sample_size_total"             : numberOfSubjects,
+                "sample_size_group1_H1expected" : [expectedNumberOfSubjectsH1/2]*npeeks,
+                "sample_size_total_H1expected"  : [expectedNumberOfSubjectsH1]*npeeks,
+                "sample_size_peek_perc"         : infoRates,
+                "peek"                          : peeks,
+                "critical_zvalue"               : critical_zvalues,
+                "siglevels"                     : sigLevels,
+                "siglevelsCum"                  : alphaSpent,
+                "stopProb"                      : stopProb,
+                "design"                        : 'Group sequence'
+                # 
+            }
+        )
+        fixed_design = eDataFrame(
+            {
+                "sample_size_group1"            : fixed_design_group1 ,
+                "sample_size_group2"            : fixed_design_group2 ,
+                "sample_size_total"             : fixed_design_group1+fixed_design_group2,
+                "sample_size_group1_H1expected" : fixed_design_group1,
+                "sample_size_total_H1expected"  : fixed_design_group1+fixed_design_group2,
+                "sample_size_peek_perc"         : 1,
+                "peek"                          : np.max(peeks),
+                "critical_zvalue"               : np.abs(qnorm.ppf(self.alpha/tail)),
+                "siglevels"                     : self.alpha,
+                "siglevelsCum"                  : self.alpha,
+                "stopProb"                      : self.power,
+                "design"                        : 'Fixed design'
+                # 
+            }
+        )
+        tab= (base
+              .bind_col((seq_design .bind_row(fixed_design)), ignore_index=False)
+              .fillna(inplace=False, axis=0, method="ffill")
+              )
+        return tab
+
+    def __2prop_get_prop1__(self):
+        if not self.type2prop['prop1']:
+            prop1s = np.array([0.01] +
+                              [round(x, 2) for x in list(np.linspace(0.0, 1, 21))][1:-1] +
+                              [0.99])
+        else:
+            prop1s=self.type2prop['prop1']
+            if isinstance(prop1s, float):
+                prop1s = np.array([prop1s])
+            if isinstance(prop1s, list):
+                prop1s = np.array(prop1s)
+        return prop1s
+
+
+
+# *** misc
+
+    def __get_main_columns__(self, tab, extra_columns={}):
+        tab=(
+            tab
+            .select_cols(names={'design'            : 'Design',
+                                'peek'              : 'Peek',
+                                'prop1'             : "pi_c",
+                                'prop2'             : "pi_t",
+                                'sample_size_group1': "N (group c)",
+                                'sample_size_group2': "N (group t)",
+                                'sample_size_total' : "N (total)",
+                                'critical_zvalue'   : "z-value",
+                                'siglevels'         : "Sig. level",
+                                'stopProb'          : 'Power',
+                                } | extra_columns)
+        )
+        return eDataFrame(tab)
+
+
+
+# * Other Tests
+# ** chisquared
 
 class chisq_test():
 

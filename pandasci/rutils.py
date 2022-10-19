@@ -6,14 +6,21 @@ import re
 
 
 # * R modules
+
+
+print("Loading R packages for module rutils of pandasci. It may take a while...")
+
 # supress warnings
 import warnings
 warnings.filterwarnings("ignore")
 from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
 import logging
 rpy2_logger.setLevel(logging.ERROR)   # will display errors, but not warnings
-
-
+# 
+# Error handling
+from rpy2.rinterface_lib.embedded import RRuntimeError
+from rpy2.robjects.packages import PackageNotInstalledError
+# 
 import rpy2.robjects as robj
 import rpy2.rlike.container as rlc
 import rpy2.robjects.lib.ggplot2 as gg
@@ -23,11 +30,29 @@ from rpy2.robjects.packages import data as datar
 # import data from package: datar(pkg as loaded into python).fetch('data name')['data name']
 # 
 pandas2ri.activate()
-stats = importr('stats')
-base = importr('base')
-utils = importr("utils")
-dplyr=importr("dplyr")
-formula_tools=importr("formula.tools")
+
+def importr_or_install(packname, contriburl="http://cran.r-project.org"):
+    '''To install R packages if needed'''
+    try:
+        rpack = importr(packname)
+    except (RRuntimeError, PackageNotInstalledError):
+        print(f"Installing R package {packname}...")
+        utils.install_packages(packname)
+        rpack = importr(packname)
+    return rpack
+
+stats = importr_or_install('stats')
+base = importr_or_install('base')
+utils = importr_or_install("utils")
+dplyr=importr_or_install("dplyr")
+formula_tools=importr_or_install("formula.tools")
+
+
+print("R packages loaded!")
+
+# * funcitions
+
+
 
 # * rutils class
 

@@ -1,5 +1,6 @@
 setup.py
 pandasci/__init__.py
+pandasci/cai.py
 pandasci/ds.py
 pandasci/models.py
 pandasci/rutils.py

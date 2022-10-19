@@ -28,6 +28,7 @@ from numpy import pi as pi
 import textwrap, xlrd, warnings
 # 
 from scipy.stats import norm as dnorm
+from scipy.stats import norm as qnorm
 from numpy.random import choice as rsample
 from numpy.random import normal as rnorm
 from numpy.random import uniform as runif
@@ -112,6 +113,8 @@ def read_data(**kwargs):
         return read_txt(**kwargs)
     elif fn_type=='.tex':
         return read_tex(**kwargs)
+    elif fn_type=='.dat':
+        return read_dat(**kwargs)
     elif kwargs.get('gs_api', None):
         return read_gspread(**kwargs)
     # 
@@ -203,6 +206,13 @@ def read_tex(**kwargs):
     with open(fn) as f:
         content=f.readlines()
     return content
+def read_dat(**kwargs):
+    fn=kwargs.get('fn')
+    kwargs.pop('fn')
+    kwargs['sep']="\s+"
+    df = pd.read_csv(fn, **kwargs)
+    return eDataFrame(df)
+    
 def read_gspread(**kwargs):
     '''
     Load google spreadsheet
@@ -1292,9 +1302,12 @@ class eDataFrame(pd.DataFrame):
         Input
         -----
         var  string, list, or dictionary with variable name to set as categorical
-             type
+             type. If a dictionary is used, the keys must be the variable name
+             and the values a list with the categories in the order they should
+             follow.
         cats a list with the categories. It None unique variable valies will
-             be used and they will be sorted if ordered=True
+             be used and they will be sorted if ordered=True. Ignored if
+             var is a dictionary
         ordered boolean, if True it will order the values respecting the
                 order provided in 'cats', in increaseing order. If cats=None
                 and ordered=True, it sorts the unique values of 'var' first, 
@@ -1309,26 +1322,39 @@ class eDataFrame(pd.DataFrame):
         eDataFrame with categorical variable
 
         '''
+        assert isinstance(var, dict) or \
+            isinstance(var, str) or \
+            isinstance(var, list) , ("'var' must be a list, string, or a "\
+                                        "dictionary")
         vars=None
         if isinstance(var, str):
             vars={var:var}
         if isinstance(var, list):
             vars={v:v for v in var}
         if isinstance(var, dict):
-            vars=var
-        assert isinstance(vars, dict), ("'var' must be a list, string, or a "\
-                                        "dictionary")
-        for var, label in vars.items():
-            self = (
-                self
-                .rename_cols(columns={var:label}, tolower=False)
-                .mutate({label: lambda x:
-                         pd.Categorical(x[label],
-                                        categories=cats,
-                                        ordered=ordered)})
-            )
-            if wrap:
-                self=self.__wrap_var__(label, wrap=wrap, wrap_char=wrap_char)
+            for vari, cats in var.items():
+                self = (
+                    self
+                    .rename_cols(columns={vari:vari}, tolower=False)
+                    .mutate({vari: lambda x:
+                             pd.Categorical(x[vari],
+                                            categories=cats,
+                                            ordered=ordered)})
+                )
+                if wrap:
+                    self=self.__wrap_var__(vari, wrap=wrap, wrap_char=wrap_char)
+        else:
+            for var, label in vars.items():
+                self = (
+                    self
+                    .rename_cols(columns={var:label}, tolower=False)
+                    .mutate({label: lambda x:
+                             pd.Categorical(x[label],
+                                            categories=cats,
+                                            ordered=ordered)})
+                )
+                if wrap:
+                    self=self.__wrap_var__(label, wrap=wrap, wrap_char=wrap_char)
 
         return eDataFrame(self)
         
@@ -2268,7 +2294,7 @@ class eDataFrame(pd.DataFrame):
                                        'Median':'median',
                                        # "Q75":quantile75,
                                        'Min':'min', "Max":'max'},
-                groups=None, wide_format=None):
+                groups=None, wide_format=None, ci=False, ci_level=0.95):
         '''
         Compute summary of numeric variables
 
@@ -2282,6 +2308,11 @@ class eDataFrame(pd.DataFrame):
            groups a string or list with variable names. If provided, compute
                   the summaries per group
            wide_format if True, return results in a wide_format
+           ci   boolean. If true, includes a gaussian conficence
+                interval around the average using 'ci_level' as
+                the confidence level
+           ci_level a number between 0 and 1 indicating the
+                    confidence level
         
         Output
           eDataFrame with summary
@@ -2352,6 +2383,17 @@ class eDataFrame(pd.DataFrame):
             res=res.mutate_type(col2type={"N":int}, from_to=None)
         except (KeyError) as e:
             pass
+
+        if ci:
+            ci_level= ci_level + (1-ci_level)/2
+            z = qnorm.ppf(ci_level, loc=0, scale=1)
+            res = (
+                res
+                .mutate_rowwise({
+                    'lower': lambda col: col['Mean'] - z*col['Std.Dev'],
+                    'upper': lambda col: col['Mean'] + z*col['Std.Dev'],
+                })
+            )
         return eDataFrame(res)
 
 
