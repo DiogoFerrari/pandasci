@@ -57,12 +57,15 @@ print("R packages loaded!")
 # * rutils class
 
 class rutils():
+    
     def __init__(self):
         pass
+
 
     def strr(self, obj):
         print(utils.str(obj))
     
+
     def str(self, obj):
         if isinstance(obj, robj.methods.RS4):
             print(f"\nSlots level 1\n", flush=True)
@@ -78,7 +81,6 @@ class rutils():
                     print("empty ... ")
         # print("\nNote: Run nested function to go down the levels. "+
         #       "E.g.: str(extract_info(obj, <slot>, <field>))\n")
-
 
     def extract_info(self, obj, slot, field):
         res = obj.slots[slot].find(field)
@@ -101,6 +103,7 @@ class rutils():
                 dict_final[k] = robj.FloatVector(v)
         return robj.vectors.ListVector(dict_final)
 
+
     def dict2namedvector(self, dict):
         values=list(dict.values())
         string = [True if isinstance(v, str) else False for v in values ]
@@ -112,14 +115,17 @@ class rutils():
         v.names = list(dict.keys())
         return v
         
+
     def df2pandas(self, df):
         df=dplyr.mutate_if(df, base.is_factor, base.as_character)
         res = robj.conversion.rpy2py(df)
         return dss.eDataFrame(res)
 
+
     def pandas2df(self, df):
         res = robj.conversion.py2rpy(df)
         return res
+
 
     def formula2varlist(self, formula):
         vars = list(formula_tools.get_vars(robj.Formula(formula)))

@@ -1,9 +1,10 @@
 # from .rutils import rutils
-import pandasci.rutils as rutils
+# import pandasci.rutils as rutils
 import pandas as pd
 import numpy as np
 from scipy import stats
 import scipy as sp
+from dask import dataframe as ddf 
 #
 import collections.abc
 # python 3.10 change aliases for collection; modules, e.g., spss
@@ -66,7 +67,6 @@ warnings.filterwarnings("ignore")
 
 
 # * functions
-
 # ** others
 def quantile10(x):
     res = np.quantile(x, q=.10) 
@@ -85,38 +85,53 @@ def count_missing(x):
     return res
 
 # ** reading data
-def read_data(**kwargs):
-    fn=kwargs.get('fn')
-    
-    print(f"Loading data '{os.path.basename(fn)}'...", flush=True)
+
+def read_data(**kws):
+    '''
+    fn         filename with path
+
+    sep        the column separator character
+
+    big_data   boolean. If True, use Dask to handle big data
+
+    '''
+    fn=kws.get('fn')
     assert fn, "fn (filepath) must be provided."
+    # 
+    # Big data
+    print(f"Loading data '{os.path.basename(fn)}'...", flush=True)
+    big_data=kws.get("big_data", False)
+    if big_data:
+        kws.pop('big_data', 0)
+        print("Using dask dataframe for big data...")
+        # 
     fn_type=os.path.splitext(fn)[1]
     # 
     if fn_type=='.csv' or fn_type=='.CSV':
-        return read_csv(**kwargs)
+        return read_csv(big_data=big_data, **kws)
     # 
     elif fn_type=='.dta' or fn_type=='.DTA':
-        return read_dta(**kwargs)
+        return read_dta(big_data=big_data, **kws)
     # 
     elif fn_type=='.sav':
-        # return spss_data(**kwargs)
-        return read_spss(**kwargs)
+        # return spss_data(**kws)
+        return read_spss(**kws)
     # 
     elif (fn_type=='.xls' or fn_type=='.xlsx' or
           fn_type=='.xltx' or fn_type=='.XLTX' or
           fn_type=='.ods' or fn_type=='.ODS' or
           fn_type=='.XLS' or fn_type=='.XLSX'):
-        return read_xls(**kwargs)
+        return read_xls(big_data=big_data, **kws)
     elif fn_type=='.tsv':
-        return read_tsv(**kwargs)
+        return read_tsv(big_data=big_data, **kws)
     elif fn_type=='.txt':
-        return read_txt(**kwargs)
+        return read_txt(big_data=big_data, **kws)
     elif fn_type=='.tex':
-        return read_tex(**kwargs)
+        return read_tex(big_data=big_data, **kws)
     elif fn_type=='.dat':
-        return read_dat(**kwargs)
-    elif kwargs.get('gs_api', None):
-        return read_gspread(**kwargs)
+        return read_dat(big_data=big_data, **kws)
+    elif kws.get('gs_api', None):
+        return read_gspread(**kws)
     # 
     else:
         print(f"No reader for file type {fn_type}. If you are trying to read "+
@@ -125,95 +140,95 @@ def read_data(**kwargs):
               "parameter sn with the sheet name in the spreadsheet")
         return None
         
-def read_csv(**kwargs):
-    fn=kwargs.get('fn')
-    kwargs.pop('fn')
-    if not kwargs.get('sep', None):
-        kwargs['sep']=";"
-    df = pd.read_csv(filepath_or_buffer=fn, **kwargs)
-    return eDataFrame(df)
+def read_csv (big_data, **kws):
+    fn=kws.get('fn')
+    kws.pop('fn')
+    if not kws.get('sep', None):
+        kws['sep']=";"
+    if not big_data:
+        df = pd.read_csv(filepath_or_buffer=fn, **kws)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
         
-def read_dta(**kwargs):
-    fn=kwargs.get('fn')
-    return eDataFrame(pd.read_stata(fn))
+def read_dta (big_data, **kws):
+    # 
+    fn=kws.get('fn')
+    if not big_data:
+        df = pd.read_stata(fn)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
 
-def read_xls(**kwargs):
-    fn=kwargs.get('fn'); kwargs.pop('fn')
-    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
-    # 
-    # print(f"\nFunction arguments:\n")
-    # print(inspect.signature(pd.read_excel))
-    # print(f"\nFor details, run help(pd.read_excel)\n")
-    # print(f"Data set loaded!")
-    # 
-    return df
+def read_xls (big_data, **kws):
+    fn=kws.get('fn'); kws.pop('fn')
+    if not big_data:
+        df = eDataFrame(pd.read_excel(io=fn, **kws))
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
     
-def read_xltx(**kwargs):
-    fn=kwargs.get('fn'); kwargs.pop('fn')
-    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
-    # 
-    # print(f"\nFunction arguments:\n")
-    # print(inspect.signature(pd.read_excel))
-    # print(f"\nFor details, run help(pd.read_excel)\n")
-    # print(f"Data set loaded!")
-    # 
-    return df
+def read_xltx(big_data, **kws):
+    fn=kws.get('fn'); kws.pop('fn')
+    if not big_data:
+        df = eDataFrame(pd.read_excel(io=fn, **kws))
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
     
-def read_ods(**kwargs):
-    fn=kwargs.get('fn'); kwargs.pop('fn')
-    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
-    # 
-    # print(f"\nFunction arguments:\n")
-    # print(inspect.signature(pd.read_excel))
-    # print(f"\nFor details, run help(pd.read_excel)\n")
-    # print(f"Data set loaded!")
-    # 
-    return df
+def read_ods (big_data, **kws):
+    fn=kws.get('fn'); kws.pop('fn')
+    if not big_data:
+        df = eDataFrame(pd.read_excel(io=fn, **kws))
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
     
-def read_tsv(**kwargs):
-    fn=kwargs.get('fn')
-    sep=kwargs.get('sep', '\t')
-    kwargs.pop('fn')
-    if 'sep' in list(kwargs.keys()):
-        kwargs.pop('sep')
-    df = pd.read_csv(filepath_or_buffer=fn, sep=sep, **kwargs)
-    # df = pd.read_csv(filepath_or_buffer=kwargs.get('fn'),
-    #                  sep=kwargs.get('sep', '\t'),
-    #                  index_col=kwargs.get('index_col'),
-    #                  decimal=kwargs.get('decimal', '.'),
-    #                  skiprows=kwargs.get('skiprows', None),
-    #                  nrows=kwargs.get('nrows', None),
-    #                  encoding=kwargs.get('encoding', 'utf-8'),
-    #                  parse_dates=kwargs.get('parse_dates', None),
-    #                  )
-    return eDataFrame(df)
+def read_tsv (big_data, **kws):
+    fn=kws.get('fn')
+    kws.pop('fn')
+    # 
+    kws['sep'] = '\t'
+    # 
+    if not big_data:
+        df = pd.read_csv(filepath_or_buffer=fn, **kws)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
 
-def read_txt(**kwargs):
-    fn=kwargs.get('fn')
-    kwargs.pop('fn')
-    df = pd.read_table(filepath_or_buffer=fn, **kwargs)
-    # df = pd.read_table(filepath_or_buffer=fn,
-    #                    names=kwargs.get('names', None),
-    #                    decimal=kwargs.get('decimal', '.'),
-    #                    skiprows=kwargs.get('skiprows', None),
-    #                    nrows=kwargs.get('nrows', None),
-    #                    encoding=kwargs.get('encoding', 'utf-8'),
-    #                    parse_dates=kwargs.get('parse_dates', None),
-    #                    )
-    return eDataFrame(df)
-def read_tex(**kwargs):
-    fn = os.path.expanduser(kwargs['fn'])
+def read_txt (big_data, **kws):
+    fn=kws.get('fn')
+    kws.pop('fn')
+    #
+    big_data=kws.get("big_data", False)
+    kws.pop('big_data', 0)
+    # 
+    if not big_data:
+        df = pd.read_table(filepath_or_buffer=fn, **kws)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
+
+def read_tex (big_data, **kws):
+    fn = os.path.expanduser(kws['fn'])
     with open(fn) as f:
         content=f.readlines()
     return content
-def read_dat(**kwargs):
-    fn=kwargs.get('fn')
-    kwargs.pop('fn')
-    kwargs['sep']="\s+"
-    df = pd.read_csv(fn, **kwargs)
-    return eDataFrame(df)
+
+def read_dat (big_data, **kws):
+    fn=kws.get('fn')
+    kws.pop('fn')
+    kws['sep']="\s+"
+    if not big_data:
+        df = pd.read_csv(fn, **kws)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
     
-def read_gspread(**kwargs):
+def read_dask(fn, **kws):
+    return ddf.read_csv(fn, **kws)
+
+def read_gspread(**kws):
     '''
     Load google spreadsheet
     Note: Remember to share the spreadsheet with e-mail client in json file, 
@@ -231,13 +246,13 @@ def read_gspread(**kwargs):
     ------
     eDataFrame
     '''
-    assert kwargs.get("gs_api", None),"A json file with google spreadsheet API"+\
+    assert kws.get("gs_api", None),"A json file with google spreadsheet API"+\
         "must be provided."
-    assert kwargs.get("sheet_name", None), "The sheet_name must be provided."
+    assert kws.get("sheet_name", None), "The sheet_name must be provided."
     # 
-    fn=kwargs.get("fn", None)
-    json_file=kwargs.get("gs_api", None)
-    sheet_name=kwargs.get("sheet_name", None)
+    fn=kws.get("fn", None)
+    json_file=kws.get("gs_api", None)
+    sheet_name=kws.get("sheet_name", None)
     # credentials (see https://gspread.readthedocs.io/en/latest/oauth2.html)
     scope = ['https://spreadsheets.google.com/feeds',
              'https://www.googleapis.com/auth/drive']
@@ -257,6 +272,7 @@ def read_gspread(**kwargs):
     wks = eDataFrame(wks.spreadsheet.sheet1.get_all_records())
     # 
     return wks
+
 def reorderLegend(ax=None,order=None,unique=False):
     if ax is None: ax=plt.gca()
     handles, labels = ax.get_legend_handles_labels()
@@ -550,7 +566,6 @@ class spss_data():
                 vars[i] = var.decode('utf-8')
         return vars
 
-
 class read_spss():
     '''
     Class receives a full path of a .sav file and returns a 
@@ -563,6 +578,7 @@ class read_spss():
     '''
     def __init__(self, fn, encoding='utf-8'):
         # df_raw = spss.SavReader(fn, returnHeader=True, rawMode=True)
+        fn = os.path.expanduser(fn)
         self.__fn = fn
         self.encoding=encoding
         with spss.SavHeaderReader(fn, ioUtf8=True) as header:
@@ -587,11 +603,11 @@ class read_spss():
             var_labels=self.__val_labels__
         return var_labels
         
-
+    
     def var_list(self):
         self.var_search('.', encoding=self.encoding)
         
-
+    
     def var_search(self, regexp='', show_value_labels=False, get_output=False):
         '''
         Search for variables using regular expression
@@ -689,7 +705,7 @@ class read_spss():
                          inplace=True)
         print(self.varLabels[varname])
         if get_output:
-            return data
+            return eDataFrame(data)
         else:
             print("\n\n")
             print('\n')
@@ -731,30 +747,31 @@ class read_spss():
                          Format {<varname>: <value1>:<new value>, 
                                             <value2>:<new value>}
            varsnames_new list with the new names of the variables. It muat
-                         follow the order of the argument 'varnames'
+                         follow the order of the argument 'varnamesb'
 
         Output:
-            A Data Frame with the variables selected in 'varnames'
+            A Data Frame with the variables selected in 'varnamesb'
 
         '''
-        assert isinstance(varnames, list) or varnames is None,\
-        f"Variable 'varnames' must be a list or 'None'"
+        varnamesb = varnames.copy()
+        assert isinstance(varnamesb, list) or varnamesb is None,\
+        f"Variable 'varnamesb' must be a list or 'None'"
         assert isinstance(varsnames_new, list) or varsnames_new is None,\
         f"Variable 'varsnames_new' must be a list or 'None'"
         
-        if varnames:
-            varnames = self.__toBytes__(varnames).copy()
+        if varnamesb:
+            varnamesb = self.__toBytes__(varnamesb)
         else:
-            varnames = self.__metadata.varNames.copy()
-        print(f"\nLoading values of {len(varnames)} variable(s) ...")
-        print(varnames)
+            varnamesb = self.__metadata.varNames
+        print(f"\nLoading values of {len(varnamesb)} variable(s) ...")
+        print(varnamesb)
         print("\n\n")
         with spss.SavReader(self.__fn, returnHeader=False, rawMode=True,
-                            selectVars = varnames) as reader:
-            vars_char = self.__toStr__(varnames)
+                            selectVars = varnamesb) as reader:
+            vars_char = self.__toStr__(varnamesb)
             data = pd.DataFrame(reader.all(), columns=vars_char)
         if use_labels:
-            for key_bin, var_char in zip(varnames, vars_char):
+            for key_bin, var_char in zip(varnamesb, vars_char):
                 data = (data
                         .replace(regex=False,
                                  to_replace={var_char :
@@ -765,7 +782,7 @@ class read_spss():
             self.recode(data, rec)
         # rename
         if varsnames_new:
-            self.rename(data, varnames, varsnames_new)
+            self.rename(data, varnamesb, varsnames_new)
         data = eDataFrame(data)
         return data
 
@@ -839,7 +856,6 @@ class read_spss():
 
 
 # * Extended DataFrame
-
 # ** class
 class eDataFrame(pd.DataFrame):
     def __init__(self,  *args, **kwargs):
@@ -1703,6 +1719,7 @@ class eDataFrame(pd.DataFrame):
         res = res.mutate_rowwise({'data': lambda x: eDataFrame(x['data'])})
         return eDataFrame(res)
 
+
     def unnest(self, col, id_vars):
         '''
         Unnest a nested data frame
@@ -1723,7 +1740,7 @@ class eDataFrame(pd.DataFrame):
             )
         if len(id_vars)>1:
             placeholder = "__XXplaceholderXX__"
-            placeholder_list=[placeholder]*min(len(id_vars), 1)
+            placeholder_list=[placeholder]*max(len(id_vars)-1, 1)
             regexp=f"(.*){'(.*)'.join(placeholder_list)}(.*)"
             res = (
                 res
@@ -1902,7 +1919,7 @@ class eDataFrame(pd.DataFrame):
         if col2type:
             for col, type in col2type.items():
                 if type=='date':
-                    col2type[col] = 'datetime64'
+                    col2type[col] = 'datetime64[ns]'
                 elif type=='numeric':
                     col2type[col] = 'float64'
                 elif type=='char' or type=='string' or type=='text':
@@ -1914,7 +1931,8 @@ class eDataFrame(pd.DataFrame):
                 new_types = {}
                 for var in vars:
                     if to_type=='date':
-                        totype = 'datetime64'
+                        totype = 'datetime[ns]'
+                        print(totype)
                     elif to_type=='numeric':
                         totype = 'float64'
                     elif to_type=='char' or to_type=='string' or to_type=='text':
@@ -2351,7 +2369,8 @@ class eDataFrame(pd.DataFrame):
         # 
         # 
         if groups:
-            res = self.__summary_group__(vars, funs_names, groups, wide_format)
+            res = self.__summary_group__(vars, funs_names, groups, wide_format,
+                                         vars_newname)
         else:
             res = self.__summary__(vars, funs_names)
         # 
@@ -2394,6 +2413,12 @@ class eDataFrame(pd.DataFrame):
                     'upper': lambda col: col['Mean'] + z*col['Std.Dev'],
                 })
             )
+        # 
+        if 'N' in res.columns:
+            res = (
+                res
+                .mutate_type(col2type={"N":"int"}  )
+            )
         return eDataFrame(res)
 
 
@@ -2408,7 +2433,8 @@ class eDataFrame(pd.DataFrame):
         return res
 
 
-    def __summary_group__(self, vars, funs, groups=None, wide_format=None):
+    def __summary_group__(self, vars, funs, groups=None, wide_format=None,
+                          vars_newname=None):
         funs_name=[]
         for f in funs:
             if hasattr(f, '__call__'):
@@ -2470,6 +2496,9 @@ class eDataFrame(pd.DataFrame):
             res.columns= [re.sub(pattern="^stat_|", repl="", string=s) for s in res.columns]
             res.columns= [re.sub(pattern="variable__$", repl="variable", string=s) for s in res.columns]
             res.columns= [re.sub(pattern="_variable_", repl="_", string=s) for s in res.columns]
+            if vars_newname:
+                res=res.replace({old:new for old, new in zip(vars, vars_newname)},
+                                regex=False, inplace=False)
             # 
         res = eDataFrame(res)
         col_names = ['variable_'+fun for fun in funs_name]
@@ -2479,14 +2508,14 @@ class eDataFrame(pd.DataFrame):
 
 
     def freq(self, vars=None, groups=None, condition_on=None,
-             include_na=False):
+             include_na=False, output='print'):
         '''
         Compute frequency and marginal frequence (conditional on)
 
         Input
         -----
            vars : a list of string with variable names to return values frequencies
-           groups (or condition_on for compatibility)  : a list of strings with 
+           groups   : a list of strings with 
                        variable names to condition marginal frequencies on. 
                        If 'groups' are used, 'condition_on' is ignored
            condition_on (deprecated): see 'groups'
@@ -2552,8 +2581,10 @@ class eDataFrame(pd.DataFrame):
                    .reset_index(name='n', drop=False)
                    .groupby(condition_on)
                    .apply(compute_freq)
+                   .reset_index(drop=True)
                    .groupby(condition_on)
                    .apply(compute_stdev)
+                   .reset_index(drop=True)
                    .sort_values(by=(condition_on+vars),  ascending=True)
             )
         res=eDataFrame(res)
@@ -2563,7 +2594,10 @@ class eDataFrame(pd.DataFrame):
             .mutate({"lo": lambda x: x['freq']-1.96*x['stdev']})
             .mutate({"hi": lambda x: x['freq']+1.96*x['stdev']})
         )
-        return eDataFrame(res)
+        if output=='print':
+            print(eDataFrame(res).to_string())
+        else:
+            return eDataFrame(res)
 
 
     def quantiles(self, var, nq=10, labels=None, silent=False):
@@ -2584,10 +2618,12 @@ class eDataFrame(pd.DataFrame):
                            df=len(x)-1)
         return ci
         
+
     def ci_norm(self, var, alpha=.95):
         x = self[var]
         ci = st.norm.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha)
         return ci
+
 
     def corr_pairwise(self, vars, long_format=True, lower_tri=False):
         assert isinstance(vars, list), "'vars' need to be a list"
@@ -2974,9 +3010,11 @@ class eDataFrame(pd.DataFrame):
                 add_hline=None,
                 add_blank_row=None,
                 add_row_group=None,
+                add_row_group_hspace=0.5,
+                # 
                 add_col_group=None,
                 # 
-                escape=False,
+                escape=True,
                 index=False,
                 digits=2,
                 # 
@@ -3005,6 +3043,8 @@ class eDataFrame(pd.DataFrame):
            add_row_group : a dict with the line number (key) and the text (value) 
                            to add on that line as a multiline text. 
                            Useful to group rows.
+           add_row_group_hspace : size of the horizontal space (in em)
+                                   to add to the rows in the groups
            add_col_group : a list of dictinaries. Each dictionary must have 
                            the column labels to add (keys) and tuples of
                            integers indicating "(initial column, end column, <l/r/c alignment>)."
@@ -3047,6 +3087,16 @@ class eDataFrame(pd.DataFrame):
             dres = eDataFrame()
             ncol = self.ncol
             idx = []
+            # 
+            # add horizontal space in the groups
+            first_col = self.names(".")[0]
+            self=(
+                self
+                .mutate({first_col: lambda col:
+                         [f"\hspace{{{add_row_group_hspace}em}}"+str(s)
+                          for s in col[first_col]]})
+            )
+            # 
             for row, text in add_row_group.items():
                 row_idx = row-.1
                 idx += [row_idx]
@@ -3061,7 +3111,14 @@ class eDataFrame(pd.DataFrame):
                 .append(dres, ignore_index=False)
                 .sort_index()
             )
+            # must be false of the row commands get messed up
             escape=False
+            # escape all % in columns or rows
+            self = (
+                self
+                .replace({"%":"\%"} , regex=True, inplace=False)
+                .rename_cols(regex={"%":"\%"}, tolower=False)
+            )
         tab = (
             self
             .round(digits)
@@ -4800,6 +4857,9 @@ class egroupby(pd.core.groupby.DataFrameGroupBy):
                 pass
         return res
 
+    def mutate_case(self, dict, replace=None):
+        res = self.apply(lambda x: x.mutate_case(dict))
+        return res
 
     def scale(self, *args, **kws):
         res=self.apply(lambda x: x.scale(*args, **kws))

@@ -156,7 +156,6 @@ def ggguides():
 # * Regression models
 
 class regression():
-    
     def __init__(self, models=None, data=None,
                  na='omit', engine='r', *args, **kws):
         '''
@@ -269,7 +268,6 @@ class regression():
         if models:
             self.add_models(models=models, data=data, 
                             na=na, engine=engine, *args, **kws)
-
 
     def add_models(self, models, data=None, na='omit',
                    engine='r', *args, **kws):
@@ -497,6 +495,7 @@ class regression():
         return pred
 
 
+
     def newdata(self,
                 mods=None,
                 predictor=None,
@@ -514,6 +513,7 @@ class regression():
                            )
         return newdata
         
+    
 
     def plot_coef(self,
                   x='estimate',
@@ -1140,6 +1140,7 @@ class regression():
         g.plot()
         return g
 
+    
 
     def print(self, models=None, regex=None, *args, **kws):
         '''
@@ -1216,13 +1217,13 @@ class regression():
         return list(coeflabels)
         
 
+
     def build_formula(self, output, inputs, interactions=None, clusters=None):
         mu=models_utils()
         return mu.build_formula(output=output,
                                 inputs=inputs,
                                 interactions=interactions,
                                 clusters=clusters)
-
 
     def __run_regressions__(self, models, *args, **kws):
         for label, model in models.items():
@@ -1236,7 +1237,6 @@ class regression():
                                         engine  = self.engine[label],
                                         *args, **kws)
             )
-
 
     def __run_dispatcher__(self, idx, label, formula, family, data, engine,
                            *args, **kws):
@@ -1325,7 +1325,6 @@ class regression():
             )
              coefs[group]=list(unique_vars)
         return coefs
-
 
     def __get_var_group__(self):
         res_final=eDataFrame()
@@ -1683,7 +1682,6 @@ class regression():
             # 
             self.variables=self.variables.bind_row(res)
 
-
     def __get_categorical_term_string__(self, model, term):
         vartype=(
             self
@@ -1715,6 +1713,7 @@ class regression():
         return res
 
 
+
     def __run_gaussianr__(self, idx, formula, label, data, *args, **kws):
         fit = stats.lm(formula, data=data, family='gaussian')
         mod = pd.DataFrame({'idx'          :idx,
@@ -1737,6 +1736,7 @@ class regression():
                             })
         return mod
 
+    
 
     def __run_binomialr__(self, idx, formula, label, data, *args, **kws):
         fit = stats.glm(formula, data=data, family='binomial')
@@ -1761,6 +1761,7 @@ class regression():
         return mod
 
 
+
     def __run_multinomialr__(self, idx, formula, label, data, *args, **kws):
         fit = nnet.multinom(formula, data=data)
         mod = pd.DataFrame({'idx'          :idx,
@@ -1782,6 +1783,7 @@ class regression():
                             'rmse'         :self.__get_r_multinomial_rmse__(fit)
                             })
         return mod
+
 
 
     def __tolatex__(self, tab, fn, *args, **kws):
@@ -1832,6 +1834,7 @@ class regression():
         res=self.__summaryr__(*args, **kws)
         return res
        
+
 
     def __summaryr__(self, *args, **kws):
         # self.__reprr__(*args, **kws)
@@ -1906,6 +1909,7 @@ class regression():
             )
             res.loc[res.duplicated(['term']), 'term'] = ""
         return res
+
 
 
     def __get_r_lm_summary_tidy__(self, fit):
@@ -3252,79 +3256,6 @@ class pca():
 # * Power and Sample size
 
 class power():
-    
-    def __init__(self,
-                 diff,
-                 alpha=0.05,
-                 power=0.8,
-                 two_tail=True,
-                 ratio=1,
-                 seq_design={
-                     'typeOfDesign': 'OF',
-                     'stops_at'    :[.33, .66, 1]
-                 },
-                 type=None,
-                 type2prop={"prop1":None},
-                 ):
-        '''
-        Compute the sample size
-
-        Input 
-        -----
-        diff     : difference between average value of the outcome in the
-                   two groups (e.g., different in proportions, mean, etc.)
-        alpha    : significance level
-        power    : power of the test
-        two_tail : boolean. If True, use two-tail test
-        ratio    : Sample size ratio, nobs2 = ratio * nobs1. Use 1 if the
-                   sample size is the same in the two groups
-        type     : sting with the type of test. Options are:
-
-                   2prop :  used when you have two groups and
-                            you want to know if the proportions of each group are
-                            different from one another.
-                            Examples: 
-                            -------
-                            a. Is the proportion of men in favor of gender equality
-                               different from the proportion of woman in favor of
-                               gender equality
-                            b. Is proportion of cases with outcome "A" different 
-                               different in the treatment and control group?
-
-        seq_design a dictionary with parameters for the R package 'rpact' for
-                   group sequential design. The core parameters are:
-
-                   typeOfDesign  string with function to compute the critical
-                                 values at each peek. Default is 'OF'
-                                 O’Brien-Fleming (Proschan et al., 2006).
-                                 See rpact for other options
-        
-                   stops_at      Ration of the total sample to peek [.33, .66, 1]
-
-        type*   : a dictionary with type-specific arguments. The * can be:
-          
-                  2prop : prop1  a list or float with the proportion(s)
-                          presumed for group 1
-        
-
-        '''
-        assert type, "'type' must be provided"
-        assert diff, "The effect size 'diff' must be provided"
-        
-        if isinstance(diff, float):
-            diff = [diff]
-        self.diff=diff
-        self.alpha=alpha
-        self.power=power
-        self.ratio=ratio
-        self.two_tail=two_tail
-        self.type=type
-        self.data=None
-        self.seq_design=seq_design
-        self.type2prop=type2prop
-        if type=='2prop':
-            self.data = self.__2prop__()
-
 
     def get_design(self, value_group1, diff, raw_fit=False, summary=True):
         '''

@@ -1,9 +1,10 @@
 # from .rutils import rutils
-import pandasci.rutils as rutils
+# import pandasci.rutils as rutils
 import pandas as pd
 import numpy as np
 from scipy import stats
 import scipy as sp
+from dask import dataframe as ddf 
 #
 import collections.abc
 # python 3.10 change aliases for collection; modules, e.g., spss
@@ -66,7 +67,6 @@ warnings.filterwarnings("ignore")
 
 
 # * functions
-
 # ** others
 def quantile10(x):
     res = np.quantile(x, q=.10) 
@@ -85,38 +85,53 @@ def count_missing(x):
     return res
 
 # ** reading data
-def read_data(**kwargs):
-    fn=kwargs.get('fn')
-    
-    print(f"Loading data '{os.path.basename(fn)}'...", flush=True)
+
+def read_data(**kws):
+    '''
+    fn         filename with path
+
+    sep        the column separator character
+
+    big_data   boolean. If True, use Dask to handle big data
+
+    '''
+    fn=kws.get('fn')
     assert fn, "fn (filepath) must be provided."
+    # 
+    # Big data
+    print(f"Loading data '{os.path.basename(fn)}'...", flush=True)
+    big_data=kws.get("big_data", False)
+    if big_data:
+        kws.pop('big_data', 0)
+        print("Using dask dataframe for big data...")
+        # 
     fn_type=os.path.splitext(fn)[1]
     # 
     if fn_type=='.csv' or fn_type=='.CSV':
-        return read_csv(**kwargs)
+        return read_csv(big_data=big_data, **kws)
     # 
     elif fn_type=='.dta' or fn_type=='.DTA':
-        return read_dta(**kwargs)
+        return read_dta(big_data=big_data, **kws)
     # 
     elif fn_type=='.sav':
-        # return spss_data(**kwargs)
-        return read_spss(**kwargs)
+        # return spss_data(**kws)
+        return read_spss(**kws)
     # 
     elif (fn_type=='.xls' or fn_type=='.xlsx' or
           fn_type=='.xltx' or fn_type=='.XLTX' or
           fn_type=='.ods' or fn_type=='.ODS' or
           fn_type=='.XLS' or fn_type=='.XLSX'):
-        return read_xls(**kwargs)
+        return read_xls(big_data=big_data, **kws)
     elif fn_type=='.tsv':
-        return read_tsv(**kwargs)
+        return read_tsv(big_data=big_data, **kws)
     elif fn_type=='.txt':
-        return read_txt(**kwargs)
+        return read_txt(big_data=big_data, **kws)
     elif fn_type=='.tex':
-        return read_tex(**kwargs)
+        return read_tex(big_data=big_data, **kws)
     elif fn_type=='.dat':
-        return read_dat(**kwargs)
-    elif kwargs.get('gs_api', None):
-        return read_gspread(**kwargs)
+        return read_dat(big_data=big_data, **kws)
+    elif kws.get('gs_api', None):
+        return read_gspread(**kws)
     # 
     else:
         print(f"No reader for file type {fn_type}. If you are trying to read "+
@@ -125,95 +140,95 @@ def read_data(**kwargs):
               "parameter sn with the sheet name in the spreadsheet")
         return None
         
-def read_csv(**kwargs):
-    fn=kwargs.get('fn')
-    kwargs.pop('fn')
-    if not kwargs.get('sep', None):
-        kwargs['sep']=";"
-    df = pd.read_csv(filepath_or_buffer=fn, **kwargs)
-    return eDataFrame(df)
+def read_csv (big_data, **kws):
+    fn=kws.get('fn')
+    kws.pop('fn')
+    if not kws.get('sep', None):
+        kws['sep']=";"
+    if not big_data:
+        df = pd.read_csv(filepath_or_buffer=fn, **kws)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
         
-def read_dta(**kwargs):
-    fn=kwargs.get('fn')
-    return eDataFrame(pd.read_stata(fn))
+def read_dta (big_data, **kws):
+    # 
+    fn=kws.get('fn')
+    if not big_data:
+        df = pd.read_stata(fn)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
 
-def read_xls(**kwargs):
-    fn=kwargs.get('fn'); kwargs.pop('fn')
-    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
-    # 
-    # print(f"\nFunction arguments:\n")
-    # print(inspect.signature(pd.read_excel))
-    # print(f"\nFor details, run help(pd.read_excel)\n")
-    # print(f"Data set loaded!")
-    # 
-    return df
+def read_xls (big_data, **kws):
+    fn=kws.get('fn'); kws.pop('fn')
+    if not big_data:
+        df = eDataFrame(pd.read_excel(io=fn, **kws))
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
     
-def read_xltx(**kwargs):
-    fn=kwargs.get('fn'); kwargs.pop('fn')
-    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
-    # 
-    # print(f"\nFunction arguments:\n")
-    # print(inspect.signature(pd.read_excel))
-    # print(f"\nFor details, run help(pd.read_excel)\n")
-    # print(f"Data set loaded!")
-    # 
-    return df
+def read_xltx(big_data, **kws):
+    fn=kws.get('fn'); kws.pop('fn')
+    if not big_data:
+        df = eDataFrame(pd.read_excel(io=fn, **kws))
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
     
-def read_ods(**kwargs):
-    fn=kwargs.get('fn'); kwargs.pop('fn')
-    df = eDataFrame(pd.read_excel(io=fn, **kwargs))
-    # 
-    # print(f"\nFunction arguments:\n")
-    # print(inspect.signature(pd.read_excel))
-    # print(f"\nFor details, run help(pd.read_excel)\n")
-    # print(f"Data set loaded!")
-    # 
-    return df
+def read_ods (big_data, **kws):
+    fn=kws.get('fn'); kws.pop('fn')
+    if not big_data:
+        df = eDataFrame(pd.read_excel(io=fn, **kws))
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
     
-def read_tsv(**kwargs):
-    fn=kwargs.get('fn')
-    sep=kwargs.get('sep', '\t')
-    kwargs.pop('fn')
-    if 'sep' in list(kwargs.keys()):
-        kwargs.pop('sep')
-    df = pd.read_csv(filepath_or_buffer=fn, sep=sep, **kwargs)
-    # df = pd.read_csv(filepath_or_buffer=kwargs.get('fn'),
-    #                  sep=kwargs.get('sep', '\t'),
-    #                  index_col=kwargs.get('index_col'),
-    #                  decimal=kwargs.get('decimal', '.'),
-    #                  skiprows=kwargs.get('skiprows', None),
-    #                  nrows=kwargs.get('nrows', None),
-    #                  encoding=kwargs.get('encoding', 'utf-8'),
-    #                  parse_dates=kwargs.get('parse_dates', None),
-    #                  )
-    return eDataFrame(df)
+def read_tsv (big_data, **kws):
+    fn=kws.get('fn')
+    kws.pop('fn')
+    # 
+    kws['sep'] = '\t'
+    # 
+    if not big_data:
+        df = pd.read_csv(filepath_or_buffer=fn, **kws)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
 
-def read_txt(**kwargs):
-    fn=kwargs.get('fn')
-    kwargs.pop('fn')
-    df = pd.read_table(filepath_or_buffer=fn, **kwargs)
-    # df = pd.read_table(filepath_or_buffer=fn,
-    #                    names=kwargs.get('names', None),
-    #                    decimal=kwargs.get('decimal', '.'),
-    #                    skiprows=kwargs.get('skiprows', None),
-    #                    nrows=kwargs.get('nrows', None),
-    #                    encoding=kwargs.get('encoding', 'utf-8'),
-    #                    parse_dates=kwargs.get('parse_dates', None),
-    #                    )
-    return eDataFrame(df)
-def read_tex(**kwargs):
-    fn = os.path.expanduser(kwargs['fn'])
+def read_txt (big_data, **kws):
+    fn=kws.get('fn')
+    kws.pop('fn')
+    #
+    big_data=kws.get("big_data", False)
+    kws.pop('big_data', 0)
+    # 
+    if not big_data:
+        df = pd.read_table(filepath_or_buffer=fn, **kws)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
+
+def read_tex (big_data, **kws):
+    fn = os.path.expanduser(kws['fn'])
     with open(fn) as f:
         content=f.readlines()
     return content
-def read_dat(**kwargs):
-    fn=kwargs.get('fn')
-    kwargs.pop('fn')
-    kwargs['sep']="\s+"
-    df = pd.read_csv(fn, **kwargs)
-    return eDataFrame(df)
+
+def read_dat (big_data, **kws):
+    fn=kws.get('fn')
+    kws.pop('fn')
+    kws['sep']="\s+"
+    if not big_data:
+        df = pd.read_csv(fn, **kws)
+    else:
+        df = read_dask(fn, **kws)
+    return eDataFrame(df) if not big_data else df
     
-def read_gspread(**kwargs):
+def read_dask(fn, **kws):
+    return ddf.read_csv(fn, **kws)
+
+def read_gspread(**kws):
     '''
     Load google spreadsheet
     Note: Remember to share the spreadsheet with e-mail client in json file, 
@@ -231,13 +246,13 @@ def read_gspread(**kwargs):
     ------
     eDataFrame
     '''
-    assert kwargs.get("gs_api", None),"A json file with google spreadsheet API"+\
+    assert kws.get("gs_api", None),"A json file with google spreadsheet API"+\
         "must be provided."
-    assert kwargs.get("sheet_name", None), "The sheet_name must be provided."
+    assert kws.get("sheet_name", None), "The sheet_name must be provided."
     # 
-    fn=kwargs.get("fn", None)
-    json_file=kwargs.get("gs_api", None)
-    sheet_name=kwargs.get("sheet_name", None)
+    fn=kws.get("fn", None)
+    json_file=kws.get("gs_api", None)
+    sheet_name=kws.get("sheet_name", None)
     # credentials (see https://gspread.readthedocs.io/en/latest/oauth2.html)
     scope = ['https://spreadsheets.google.com/feeds',
              'https://www.googleapis.com/auth/drive']
@@ -257,6 +272,7 @@ def read_gspread(**kwargs):
     wks = eDataFrame(wks.spreadsheet.sheet1.get_all_records())
     # 
     return wks
+
 def reorderLegend(ax=None,order=None,unique=False):
     if ax is None: ax=plt.gca()
     handles, labels = ax.get_legend_handles_labels()
@@ -550,7 +566,6 @@ class spss_data():
                 vars[i] = var.decode('utf-8')
         return vars
 
-
 class read_spss():
     '''
     Class receives a full path of a .sav file and returns a 
@@ -563,6 +578,7 @@ class read_spss():
     '''
     def __init__(self, fn, encoding='utf-8'):
         # df_raw = spss.SavReader(fn, returnHeader=True, rawMode=True)
+        fn = os.path.expanduser(fn)
         self.__fn = fn
         self.encoding=encoding
         with spss.SavHeaderReader(fn, ioUtf8=True) as header:
@@ -587,11 +603,11 @@ class read_spss():
             var_labels=self.__val_labels__
         return var_labels
         
-
+    
     def var_list(self):
         self.var_search('.', encoding=self.encoding)
         
-
+    
     def var_search(self, regexp='', show_value_labels=False, get_output=False):
         '''
         Search for variables using regular expression
@@ -689,7 +705,7 @@ class read_spss():
                          inplace=True)
         print(self.varLabels[varname])
         if get_output:
-            return data
+            return eDataFrame(data)
         else:
             print("\n\n")
             print('\n')
@@ -731,30 +747,31 @@ class read_spss():
                          Format {<varname>: <value1>:<new value>, 
                                             <value2>:<new value>}
            varsnames_new list with the new names of the variables. It muat
-                         follow the order of the argument 'varnames'
+                         follow the order of the argument 'varnamesb'
 
         Output:
-            A Data Frame with the variables selected in 'varnames'
+            A Data Frame with the variables selected in 'varnamesb'
 
         '''
-        assert isinstance(varnames, list) or varnames is None,\
-        f"Variable 'varnames' must be a list or 'None'"
+        varnamesb = varnames.copy()
+        assert isinstance(varnamesb, list) or varnamesb is None,\
+        f"Variable 'varnamesb' must be a list or 'None'"
         assert isinstance(varsnames_new, list) or varsnames_new is None,\
         f"Variable 'varsnames_new' must be a list or 'None'"
         
-        if varnames:
-            varnames = self.__toBytes__(varnames).copy()
+        if varnamesb:
+            varnamesb = self.__toBytes__(varnamesb)
         else:
-            varnames = self.__metadata.varNames.copy()
-        print(f"\nLoading values of {len(varnames)} variable(s) ...")
-        print(varnames)
+            varnamesb = self.__metadata.varNames
+        print(f"\nLoading values of {len(varnamesb)} variable(s) ...")
+        print(varnamesb)
         print("\n\n")
         with spss.SavReader(self.__fn, returnHeader=False, rawMode=True,
-                            selectVars = varnames) as reader:
-            vars_char = self.__toStr__(varnames)
+                            selectVars = varnamesb) as reader:
+            vars_char = self.__toStr__(varnamesb)
             data = pd.DataFrame(reader.all(), columns=vars_char)
         if use_labels:
-            for key_bin, var_char in zip(varnames, vars_char):
+            for key_bin, var_char in zip(varnamesb, vars_char):
                 data = (data
                         .replace(regex=False,
                                  to_replace={var_char :
@@ -765,7 +782,7 @@ class read_spss():
             self.recode(data, rec)
         # rename
         if varsnames_new:
-            self.rename(data, varnames, varsnames_new)
+            self.rename(data, varnamesb, varsnames_new)
         data = eDataFrame(data)
         return data
 
@@ -840,8 +857,8 @@ class read_spss():
 
 # * Extended DataFrame
 
-# ** class
 class eDataFrame(pd.DataFrame):
+    
     def __init__(self,  *args, **kwargs):
         # use the __init__ method from DataFrame to ensure
         # that we're inheriting the correct behavior
@@ -853,13 +870,14 @@ class eDataFrame(pd.DataFrame):
         self.set_var_label(vars=kwargs.get("var_labels", None))
         self.set_val_label(vars=kwargs.get("val_labels", None))
 
-    # this method is makes it so our methoeDataFrame return an instance
-    # of eDataFrame, instead of a regular DataFrame
     @property
     def _constructor(self):
+        '''
+        This method is makes it so our methoeDataFrame return an instance
+        of eDataFrame, instead of a regular DataFrame
+        '''
         return eDataFrame
-
-# ** Properties
+    
     # variables 
     # ---------
     def __create_var_labels__(self):
@@ -867,7 +885,6 @@ class eDataFrame(pd.DataFrame):
         self.__var_labels__={}
         for var in self.columns:
             self.__var_labels__[var]=var
-
 
     def set_var_label(self, vars=None):
         '''
@@ -880,7 +897,6 @@ class eDataFrame(pd.DataFrame):
         if vars:
             for var, label in vars.items():
                 self.__var_labels__[var] = label
-
 
     def get_var_label(self, vars=None, regexp=None):
         '''
@@ -904,7 +920,6 @@ class eDataFrame(pd.DataFrame):
                              var_name='var', value_name='label',
                              ignore_index=True))
         return res
-            
 
     def get_var_name(self, labels=None, regexp=None):
         '''
@@ -948,7 +963,6 @@ class eDataFrame(pd.DataFrame):
             var_label = self.__var_labels__.get(var, var)
             self.rename(columns={var:var_label} , inplace=True)
 
-
     def use_var_name(self, vars=None):
         if isinstance(vars, str):
             vars=[vars]
@@ -964,7 +978,6 @@ class eDataFrame(pd.DataFrame):
         self.__val_labels__=None
         self.__val_labels__={}
 
-
     def set_val_label(self, vars=None):
         '''
         Set variable labels
@@ -976,7 +989,6 @@ class eDataFrame(pd.DataFrame):
         if vars:
             for var, label in vars.items():
                 self.__val_labels__[var] = label
-
 
     def get_val_label(self, var=None):
         '''
@@ -995,11 +1007,9 @@ class eDataFrame(pd.DataFrame):
                         break
             return {var:res}
 
-
     def use_val_label(self, var=None):
         rec=self.get_val_label(var=var)
         self.replace(rec, regex=False, inplace=True)
-
 
     def use_val_value(self, var=None):
         if var not in self.columns:
@@ -1015,8 +1025,8 @@ class eDataFrame(pd.DataFrame):
             rec[label]=value
         self.replace({var:rec}, regex=False, inplace=True)
 
-
-# ** Data wrangling
+    # Data wrangling
+    # --------------
     def case_when(self, varname, replace=None):
         '''
         Deprecated. Use mutate_case insead. Kept for backward compatibility.
@@ -1151,7 +1161,6 @@ class eDataFrame(pd.DataFrame):
             res = self.__case_when__(varname, replace)
             res=res.fill_na(value=np.nan , vars=varname)
         return eDataFrame(res)
-                
 
     def __case_when__(self, varname, replace):
         if varname in self.columns:
@@ -1206,7 +1215,6 @@ class eDataFrame(pd.DataFrame):
                        var_name=var_name, value_name=value_name,
                        ignore_index=ignore_index)
         return eDataFrame(res)
-        
 
     def pivot_wider(self, id_vars=None, cols_from=None, values_from=None,
                     aggfunc='sum', sep="_"):
@@ -1246,7 +1254,6 @@ class eDataFrame(pd.DataFrame):
         res.columns.name=''
         return eDataFrame(res)
 
-
     def combine(self, cols, colname=None, sep='_', remove=False):
         '''
         Combine columns
@@ -1275,7 +1282,6 @@ class eDataFrame(pd.DataFrame):
             res=res.drop_cols(names=cols)
         res = res.loc[:, ~res.columns.duplicated(keep='last')]
         return res
-        
 
     def mutate(self, dict=None, var_to_wrap=None, wrap=None, wrap_char="\\n"):
         res = self
@@ -1358,11 +1364,9 @@ class eDataFrame(pd.DataFrame):
 
         return eDataFrame(self)
         
-
     def bind_row(self, df):
         res =  pd.concat([self, df], axis=0, ignore_index=True)
         return eDataFrame(res)
-
 
     def bind_col(self, df, ignore_index=True):
         if ignore_index:
@@ -1370,7 +1374,6 @@ class eDataFrame(pd.DataFrame):
         res =  pd.concat([self, df], axis=1, ignore_index=ignore_index)
         return eDataFrame(res)
         
-
     def separate(self, col, into, regexp, keep=False):
         res = self[col].str.extract(regexp)
         if isinstance(into, str):
@@ -1380,7 +1383,6 @@ class eDataFrame(pd.DataFrame):
         if not keep:
             res = res.drop([col], axis=1)
         return eDataFrame(res)
-
 
     def join(self, data, how='left', on=None, left_on=None, right_on=None,
               conflict='keep_all', suffixes=['_x', "_y"], indicator=False):
@@ -1413,7 +1415,6 @@ class eDataFrame(pd.DataFrame):
                                      discard_suffix=suffixes[0])
         return eDataFrame(res)
 
-
     def __join_keep__(self, res, data, keep_suffix, discard_suffix):
         cols = list(data.columns)
         keep = [col+keep_suffix for col in cols]
@@ -1436,7 +1437,6 @@ class eDataFrame(pd.DataFrame):
                     res.rename(columns={k:col}, inplace=True)
         return res
         
-    
     def exchange(self, data, var, match_on=None,
                  match_on_left=None, match_on_right=None):
         '''
@@ -1502,7 +1502,6 @@ class eDataFrame(pd.DataFrame):
         except Exception as e:
             res = self
         return eDataFrame(res)
-
 
     def cut(self, var, ncuts=10, labels=None, varname=None,
             robust=False, overwrite=True):
@@ -1599,7 +1598,6 @@ class eDataFrame(pd.DataFrame):
             res = self.bind_col(res_dummies, ignore_index=False)
         return eDataFrame(res)
 
-
     def mutate_collect(self, into, vars, overwrite=False):
         '''
         This method reverts the "mutate_to_dummy" function (see
@@ -1648,7 +1646,6 @@ class eDataFrame(pd.DataFrame):
                 )
         return eDataFrame(res)
 
-
     def reorder(self, var, order):
         res = (self
                .set_index(var, drop=False)
@@ -1676,7 +1673,6 @@ class eDataFrame(pd.DataFrame):
                .reset_index(drop=True)
                )
         return eDataFrame(res)
-
 
     def nest(self, group):
         assert isinstance(group, str) or isinstance(group, list), "'group' "+\
@@ -1723,7 +1719,7 @@ class eDataFrame(pd.DataFrame):
             )
         if len(id_vars)>1:
             placeholder = "__XXplaceholderXX__"
-            placeholder_list=[placeholder]*min(len(id_vars), 1)
+            placeholder_list=[placeholder]*max(len(id_vars)-1, 1)
             regexp=f"(.*){'(.*)'.join(placeholder_list)}(.*)"
             res = (
                 res
@@ -1749,7 +1745,6 @@ class eDataFrame(pd.DataFrame):
         res = pd.concat(res).rename(columns={'___id___':id_vars[0]}, inplace=False)
         return eDataFrame(res)
         
-
     def recode_skeleton_print(self, var):
         vals = self[var].drop_duplicates().tolist()
         print("rec = {\"<varnew>\" : {")
@@ -1758,14 +1753,12 @@ class eDataFrame(pd.DataFrame):
             print(f"    {v:20} : \"\",")
         print("}}")
 
-
     def select(self, vars=None, regex=None):
         '''
         Deprecated. Use select_cols
         '''
         res = self.select_cols(names=vars, regex=regex)
         return eDataFrame(res)
-        
 
     def select_cols(self, names=None, regex=None, positions=None, index=None,
                     range=None, type=None):
@@ -1852,7 +1845,6 @@ class eDataFrame(pd.DataFrame):
             res = res.__select_cols_type__(type)
         return res
 
-
     def __select_cols_type__(self, type):
         res = eDataFrame()
         tmp = eDataFrame()
@@ -1874,7 +1866,6 @@ class eDataFrame(pd.DataFrame):
             if tmp.nrow>0:
                 res = res.bind_col(tmp,  ignore_index=False)
         return res
-
 
     def mutate_type(self, col2type=None, from_to=None, **kws):
         '''
@@ -1902,7 +1893,7 @@ class eDataFrame(pd.DataFrame):
         if col2type:
             for col, type in col2type.items():
                 if type=='date':
-                    col2type[col] = 'datetime64'
+                    col2type[col] = 'datetime64[ns]'
                 elif type=='numeric':
                     col2type[col] = 'float64'
                 elif type=='char' or type=='string' or type=='text':
@@ -1914,7 +1905,8 @@ class eDataFrame(pd.DataFrame):
                 new_types = {}
                 for var in vars:
                     if to_type=='date':
-                        totype = 'datetime64'
+                        totype = 'datetime[ns]'
+                        print(totype)
                     elif to_type=='numeric':
                         totype = 'float64'
                     elif to_type=='char' or to_type=='string' or to_type=='text':
@@ -1924,7 +1916,6 @@ class eDataFrame(pd.DataFrame):
                     new_types[var] = totype
                 self = eDataFrame(self.astype(dtype=new_types))
         return self
-
 
     def select_rows(self, query=None, regex=None, row_numbers=None, index=None,
                     dropna=None, keepna=None):
@@ -2029,8 +2020,6 @@ class eDataFrame(pd.DataFrame):
             if res.nrow>0:
                 res=res[res[keepna].isnull().any(axis=1)]
         return eDataFrame(res)
-
-
             
     def drop_cols(self, names=None, regex=None, **kws):
         '''
@@ -2054,7 +2043,6 @@ class eDataFrame(pd.DataFrame):
             kws["axis"] = 1
             res = self.drop(names, **kws)
         return eDataFrame(res)
-
 
     def drop_rows(self, query=None, regex=None, row_numbers=None, index=None,
                     dropna=None, keepna=None):
@@ -2081,7 +2069,6 @@ class eDataFrame(pd.DataFrame):
         if keepna:
             res = res.select_rows(keepna=keepna)
         return eDataFrame(res)
-
 
     def fill_na(self, value=None, vars=None, **kws):
         '''
@@ -2182,7 +2169,6 @@ class eDataFrame(pd.DataFrame):
         else:
             return eDataFrame(res)
 
-
     def scale(self, vars=None, exclude=None, centralize=True, center='mean',
               group=None, newnames=None):
         '''
@@ -2267,25 +2253,20 @@ class eDataFrame(pd.DataFrame):
             self[var]=x
         return self
 
-
-    # def reset_index(self, name=None, drop=False):
-    #     return eDataFrame(self.reset_index(drop=drop, name=name))
-
-# ** group by
+    # group by
+    # --------
     def groupby(self, group, *args, **kwargs):
         res = egroupby(self, group)
         return res
         
-
-# ** Statistics
-
+    # Statistics
+    # ----------
     def get_outliers(self, var):
         Q1 = self[var].quantile(0.25)
         Q3 = self[var].quantile(0.75)
         IQR = Q3 - Q1
         idx = (self[var] < (Q1 - 1.5 * IQR)) | (self[var] > (Q3 + 1.5 * IQR))
         return self.loc[idx,:]
-
 
     def summary(self, vars=None, funs={'N':'count', "Missing":count_missing,
                                        'Mean':'mean',
@@ -2351,7 +2332,8 @@ class eDataFrame(pd.DataFrame):
         # 
         # 
         if groups:
-            res = self.__summary_group__(vars, funs_names, groups, wide_format)
+            res = self.__summary_group__(vars, funs_names, groups, wide_format,
+                                         vars_newname)
         else:
             res = self.__summary__(vars, funs_names)
         # 
@@ -2394,8 +2376,13 @@ class eDataFrame(pd.DataFrame):
                     'upper': lambda col: col['Mean'] + z*col['Std.Dev'],
                 })
             )
+        # 
+        if 'N' in res.columns:
+            res = (
+                res
+                .mutate_type(col2type={"N":"int"}  )
+            )
         return eDataFrame(res)
-
 
     def __summary__(self, vars, funs):
         res = (self
@@ -2407,8 +2394,8 @@ class eDataFrame(pd.DataFrame):
         )
         return res
 
-
-    def __summary_group__(self, vars, funs, groups=None, wide_format=None):
+    def __summary_group__(self, vars, funs, groups=None, wide_format=None,
+                          vars_newname=None):
         funs_name=[]
         for f in funs:
             if hasattr(f, '__call__'):
@@ -2470,6 +2457,9 @@ class eDataFrame(pd.DataFrame):
             res.columns= [re.sub(pattern="^stat_|", repl="", string=s) for s in res.columns]
             res.columns= [re.sub(pattern="variable__$", repl="variable", string=s) for s in res.columns]
             res.columns= [re.sub(pattern="_variable_", repl="_", string=s) for s in res.columns]
+            if vars_newname:
+                res=res.replace({old:new for old, new in zip(vars, vars_newname)},
+                                regex=False, inplace=False)
             # 
         res = eDataFrame(res)
         col_names = ['variable_'+fun for fun in funs_name]
@@ -2477,16 +2467,15 @@ class eDataFrame(pd.DataFrame):
             res.rename(columns={col_name:fun}, inplace=True)
         return res
 
-
     def freq(self, vars=None, groups=None, condition_on=None,
-             include_na=False):
+             include_na=False, output='print'):
         '''
         Compute frequency and marginal frequence (conditional on)
 
         Input
         -----
            vars : a list of string with variable names to return values frequencies
-           groups (or condition_on for compatibility)  : a list of strings with 
+           groups   : a list of strings with 
                        variable names to condition marginal frequencies on. 
                        If 'groups' are used, 'condition_on' is ignored
            condition_on (deprecated): see 'groups'
@@ -2552,8 +2541,10 @@ class eDataFrame(pd.DataFrame):
                    .reset_index(name='n', drop=False)
                    .groupby(condition_on)
                    .apply(compute_freq)
+                   .reset_index(drop=True)
                    .groupby(condition_on)
                    .apply(compute_stdev)
+                   .reset_index(drop=True)
                    .sort_values(by=(condition_on+vars),  ascending=True)
             )
         res=eDataFrame(res)
@@ -2563,8 +2554,10 @@ class eDataFrame(pd.DataFrame):
             .mutate({"lo": lambda x: x['freq']-1.96*x['stdev']})
             .mutate({"hi": lambda x: x['freq']+1.96*x['stdev']})
         )
-        return eDataFrame(res)
-
+        if output=='print':
+            print(eDataFrame(res).to_string())
+        else:
+            return eDataFrame(res)
 
     def quantiles(self, var, nq=10, labels=None, silent=False):
         res = (
@@ -2577,13 +2570,12 @@ class eDataFrame(pd.DataFrame):
             print(res.to_string(index=False))
         return eDataFrame(res)
 
-
     def ci_t(self, var, alpha=.95):
         x = self[var]
         ci = st.t.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha,
                            df=len(x)-1)
         return ci
-        
+
     def ci_norm(self, var, alpha=.95):
         x = self[var]
         ci = st.norm.interval(loc=x.mean(), scale=st.sem(x), alpha=alpha)
@@ -2602,7 +2594,6 @@ class eDataFrame(pd.DataFrame):
         elif lower_tri:
             res.values[np.triu_indices_from(res, 0)] = np.nan
         return res
-
 
     def pearsonr(self, vars, alpha=0.05):
         ''' 
@@ -2656,7 +2647,6 @@ class eDataFrame(pd.DataFrame):
                     res['low']+=[lo]
                     res["high"]+=[hi]
         return eDataFrame(res)
-    
 
     def prop_test(self, var, var_value,
                   treat, treat_value, control_value,
@@ -2734,7 +2724,6 @@ class eDataFrame(pd.DataFrame):
                              "ATE_low":[ATE_low], "ATE_high":[ATE_high],
                              "stat": [stat],
                              'pvalue':[pvalue], 'test':[test]})
-    
 
     def tab(self, row, col, groups=None,
             margins=True, normalize='all',#row/columns
@@ -2797,7 +2786,6 @@ class eDataFrame(pd.DataFrame):
         res.columns.name = ''
         return eDataFrame(res)
 
-
     def __tab_groups__(self, vars_row, vars_col, normalize,
                        margins, margins_name, groups):
         res = (self.
@@ -2810,7 +2798,6 @@ class eDataFrame(pd.DataFrame):
                 not bool(re.search(pattern='^level_[0-9]$', string=col))]
         res=res.filter(cols)
         return eDataFrame(res)
-        
 
     def tabn(self, vars_row, vars_col, normalize=False, margins=True,
              margins_name='Total'):
@@ -2818,13 +2805,11 @@ class eDataFrame(pd.DataFrame):
                            margins=margins, margins_name=margins_name)
         return eDataFrame(res)
 
-
     def tabp(self, vars_row, vars_col, normalize="all", margins=True,
              margins_name='Total'):
         res = self.__tab__(vars_row, vars_col, normalize=normalize,
                            margins=margins, margins_name=margins_name)
         return eDataFrame(res)
-
 
     def __tab__(self, vars_row, vars_col, normalize='all', margins=True,
                 margins_name='Total'):
@@ -2838,8 +2823,6 @@ class eDataFrame(pd.DataFrame):
                           normalize=normalize)
         res = res.reset_index(drop=False)
         return res
-
-
 
     def balance(self, vars, balance_on, include_summary=True,
                 concise=True, estimand="ATT"):
@@ -2921,9 +2904,8 @@ class eDataFrame(pd.DataFrame):
                                       'eCDF Max', 'Std Pair Dist'])
         return res
 
-
-
-# ** Utilities
+    # utilities 
+    # ---------
     def names(self, regexp=None, print_long=False):
         names = list(self)
         if regexp:
@@ -2935,7 +2917,6 @@ class eDataFrame(pd.DataFrame):
         if not names:
             print("\nNo column name matches the regexp!\n")
         return names
-            
 
     def to_org(self, round=4):
         res = self
@@ -2946,7 +2927,6 @@ class eDataFrame(pd.DataFrame):
         s = re.sub(pattern=".$", repl="", string=s)
         print(s)
 
-    
     def flatten_columns(self, sep='_'):
         'Flatten a hierarchical index'
         assert isinstance(self.columns, pd.MultiIndex), "Not a multiIndex"
@@ -2961,22 +2941,22 @@ class eDataFrame(pd.DataFrame):
         self.columns = new_columns
         return self
 
-
     def flatten(self, drop=True):
         ngroups=len(self.index.codes)
         idx = self.index.codes[ngroups-1]
         res=self.reset_index(drop=drop).set_index(idx).sort_index()
         return res
 
-
     def tolatex(self, fn=None, na_rep="", table_env=True,
                 align=None,
                 add_hline=None,
                 add_blank_row=None,
                 add_row_group=None,
+                add_row_group_hspace=0.5,
+                # 
                 add_col_group=None,
                 # 
-                escape=False,
+                escape=True,
                 index=False,
                 digits=2,
                 # 
@@ -3005,6 +2985,8 @@ class eDataFrame(pd.DataFrame):
            add_row_group : a dict with the line number (key) and the text (value) 
                            to add on that line as a multiline text. 
                            Useful to group rows.
+           add_row_group_hspace : size of the horizontal space (in em)
+                                   to add to the rows in the groups
            add_col_group : a list of dictinaries. Each dictionary must have 
                            the column labels to add (keys) and tuples of
                            integers indicating "(initial column, end column, <l/r/c alignment>)."
@@ -3047,6 +3029,16 @@ class eDataFrame(pd.DataFrame):
             dres = eDataFrame()
             ncol = self.ncol
             idx = []
+            # 
+            # add horizontal space in the groups
+            first_col = self.names(".")[0]
+            self=(
+                self
+                .mutate({first_col: lambda col:
+                         [f"\hspace{{{add_row_group_hspace}em}}"+str(s)
+                          for s in col[first_col]]})
+            )
+            # 
             for row, text in add_row_group.items():
                 row_idx = row-.1
                 idx += [row_idx]
@@ -3061,7 +3053,14 @@ class eDataFrame(pd.DataFrame):
                 .append(dres, ignore_index=False)
                 .sort_index()
             )
+            # must be false of the row commands get messed up
             escape=False
+            # escape all % in columns or rows
+            self = (
+                self
+                .replace({"%":"\%"} , regex=True, inplace=False)
+                .rename_cols(regex={"%":"\%"}, tolower=False)
+            )
         tab = (
             self
             .round(digits)
@@ -3144,7 +3143,6 @@ class eDataFrame(pd.DataFrame):
         res = res.iloc[1:,].reset_index(drop=True)
         return eDataFrame(res)
 
-
     def toexcel(self, fn=None, sheet_name=None, index=False, **kws):
         '''
         Save eDataFrame to excel
@@ -3179,8 +3177,6 @@ class eDataFrame(pd.DataFrame):
                               **kws)
                 writer.save()
 
-
-# ** Utilities (ancillary)
     def __wrap_var__(self, var, wrap=None, wrap_char=None):
         # 
         wascat=False
@@ -3205,23 +3201,19 @@ class eDataFrame(pd.DataFrame):
                                                           )})) 
         return self
 
-
-
-# ** Plots
-# *** Main
-
+    # Plots
+    # -----
     def plot(self, *args, **kws):
         tab=pd.DataFrame(self.copy())
         return tab.plot(*args, **kws)
-        
     
-# *** Scatter plot
+    # Scatter plot
     def plot_scatter(self, x, y, **kwargs):
         ax, axl = self.plot_line(x, y, kind='scatter', pts_show=True, **kwargs)
         plt.tight_layout()
         return ax, axl
         
-# *** Line Plot
+    # Line Plot
     def plot_line(self, x, y,
                   type='line',
                   # facets
@@ -3382,8 +3374,7 @@ class eDataFrame(pd.DataFrame):
         # return ax, it.chain(*ax.axes)
         return ax, ax.axes.flatten()
 
-
-# *** Polar plot
+    # Polar plot
     def plot_polar(self, vars, group=None, func='mean', facet=None, **kws):
         '''
         Plot a summary value of variables using polar coordinate
@@ -3482,8 +3473,6 @@ class eDataFrame(pd.DataFrame):
         if legend_show:
             self.__plot_polar_add_legend__(ax[0], **kws)
         return ax
-        
-
 
     def __plot_polar_add_legend__(self, ax, **kws):
         legend_title=kws.get("legend_title", '')
@@ -3525,7 +3514,6 @@ class eDataFrame(pd.DataFrame):
                         zorder=0,
                         alpha=.4) 
         
-
     def __plot_polar_addlabels__(self, ax, **kws):
         tab=kws.get('tab')
         labels=kws.get('labels', None)
@@ -3551,8 +3539,6 @@ class eDataFrame(pd.DataFrame):
         ax.set_xticks(ticks=radian_pos, minor=[])
         ax.tick_params(axis='x', pad=labels_dist)
 
-
-
     def __plot_polar_facets__(self, tab, group, func, ax, facet, **kws):
         for fct, axc in zip(np.sort(tab[facet].unique()),ax):
             tabt=tab.query(f"{facet}=={fct}")
@@ -3571,7 +3557,6 @@ class eDataFrame(pd.DataFrame):
                          xycoords='axes fraction',
                          size=facet_title_size, alpha=.6)
 
-
     def __plot_polar_groups__(self, tab, group, func, ax, **kws):
         linestyles=kws.get('group_linestyles', '-')
         groups=np.sort(tab[group].unique())
@@ -3580,7 +3565,6 @@ class eDataFrame(pd.DataFrame):
             tab[group] = tab[group].astype(str)
             tabt=tab.query(f"{group}=='{gr}'")
             self.__plot_polar_simple__(tabt, func, ax, label=gr, **kws)
-
 
     def __plot_polar_simple__(self, tab, func, ax, **kws):
         label=kws.get('label', None)
@@ -3599,7 +3583,6 @@ class eDataFrame(pd.DataFrame):
         if ylim is not None:
             ax.set_ylim(ylim[0], ylim[1])
         return ax
-
 
     def __plot_polar__get_tab_main__(self, vars, group, func, facet):
         if facet:
@@ -3656,7 +3639,6 @@ class eDataFrame(pd.DataFrame):
             tab[facet['var']]=facet['value']
         return tab, radian_pos 
 
-
     def __plot_polar_vars_group__(self, ax, tab, func, **kws):
         groups=tab['variable_group'].unique()
         shade_colors=kws.get('shade_colors', ['grey'])
@@ -3682,7 +3664,7 @@ class eDataFrame(pd.DataFrame):
                             zorder=0,
                             label=group)
 
-# *** Histogram
+    # Histogram
     def plot_hist(self, var, groups=None, discrete=False,
                   xtickslabel_wrap=None, 
                   xtickslabel_fontsize=None,
@@ -3742,7 +3724,7 @@ class eDataFrame(pd.DataFrame):
             
     
         
-# *** Density plot 
+    # Density plot 
     # ------------
     # def plot_density(self, var, ax=None, **kws):
     #     if not ax:
@@ -4052,7 +4034,6 @@ class eDataFrame(pd.DataFrame):
                 leg=axc.legend(loc="lower left")
                 leg._legend_box.align = "left"
 
-
     def __plot_get_data_facet__(self, axs, facet):
         res={}
         if not axs.axes_dict:
@@ -4073,7 +4054,6 @@ class eDataFrame(pd.DataFrame):
                 res[facet_cat]={'data':tab, 'ax':axc}
         return res
 
-
     def __density_get_group_data__(self, var, group_var, group_value):
         xi=(
             self
@@ -4091,9 +4071,6 @@ class eDataFrame(pd.DataFrame):
             for k, v in facets.items():
                 facets_res[k]=v
         return facets_res
-
-
-
 
     def __plot_hist_bin_labels__(self, ax, **kws):
         bin_labels_color=kws.get('bin_labels_color', 'black')
@@ -4153,7 +4130,7 @@ class eDataFrame(pd.DataFrame):
             ax.set_ylim(ylim)
 
 
-# *** Plot table
+    # Plot table
     def plot_table(self, ax=None, **kws):
         '''
         Plot table
@@ -4194,7 +4171,6 @@ class eDataFrame(pd.DataFrame):
         return ax
 
     # Plot correlation
-    # ----------------
     def plot_corr(self, vars=None, sig=False, legend=False, cmap='coolwarm',
                   size=8, ax=None):
         '''
@@ -4245,10 +4221,7 @@ class eDataFrame(pd.DataFrame):
                               )
         return heatmap
 
-
-
     # plot statistics with std. error 
-    # -------------------------------
     def plot_coef(self, x, y, se=None, ci=None, model_id=None, 
                   xlab=None, ylab=None,
                   title=None,
@@ -4477,8 +4450,6 @@ class eDataFrame(pd.DataFrame):
         # fig.text(0.5, 0, xlab, ha='center')
         # fig.text(0.0,.5, ylab, va='center', rotation='vertical')
         return ax
-
-
 
     def __plot_coef_main__(self, **kws):
         ax=kws.get("ax")
@@ -4713,7 +4684,7 @@ class eDataFrame(pd.DataFrame):
 
         return ax
 
-# *** Plot ancillary functions
+    # Plot ancillary functions
     def __plot_border__(self, axs, **kws):
         for axc in axs:
             axc.spines['bottom'].set_visible(True)
@@ -4767,7 +4738,6 @@ class eDataFrame(pd.DataFrame):
                        # grid_linewidth=.5,
                        # labelcolor='black'
                         )
-        
 
     def __plot_grid__(self, ax, **kws):
         grid_which=kws.get("grid_which", 'major')
@@ -4800,6 +4770,9 @@ class egroupby(pd.core.groupby.DataFrameGroupBy):
                 pass
         return res
 
+    def mutate_case(self, dict, replace=None):
+        res = self.apply(lambda x: x.mutate_case(dict))
+        return res
 
     def scale(self, *args, **kws):
         res=self.apply(lambda x: x.scale(*args, **kws))

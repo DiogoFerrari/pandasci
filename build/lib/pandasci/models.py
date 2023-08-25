@@ -69,6 +69,7 @@ formula_tools=importr_or_install("formula.tools")
 print("R packages loaded!")
 
 # * functions
+
 def ggtheme():
     g =gg.theme(
              ## ------
@@ -110,10 +111,14 @@ def ggtheme():
              # panel_grid_major_x  = gg.element_blank(),
              # panel_grid_minor_y  = gg.element_blank(),
              # panel_grid_major_y  = gg.element_blank(),
-             panel_grid_minor_y  = gg.element_line(colour="grey", size=.3, linetype=3),
-             panel_grid_major_y  = gg.element_line(colour="grey", size=.3, linetype=3),
-             panel_grid_minor_x  = gg.element_line(colour="grey", size=.3, linetype=3),
-             panel_grid_major_x  = gg.element_line(colour="grey", size=.3, linetype=3),
+             panel_grid_minor_y  = gg.element_line(colour="grey",
+                                                   size=.3, linetype=3),
+             panel_grid_major_y  = gg.element_line(colour="grey",
+                                                   size=.3, linetype=3),
+             panel_grid_minor_x  = gg.element_line(colour="grey",
+                                                   size=.3, linetype=3),
+             panel_grid_major_x  = gg.element_line(colour="grey",
+                                                   size=.3, linetype=3),
              # border 
              # ------
              panel_border      = gg.element_blank(),
@@ -133,6 +138,8 @@ def ggtheme():
              axis_title_y        = gg.element_text(size=10, angle=90),
         )
     return g
+
+
 def ggguides():
     g= gg.guides(colour = gg.guide_legend(title_position = "top",
                                           title_hjust=0),
@@ -145,9 +152,11 @@ def ggguides():
 		 )
     return g        
 
+
 # * Regression models
-# *** class
+
 class regression():
+    
     def __init__(self, models=None, data=None,
                  na='omit', engine='r', *args, **kws):
         '''
@@ -261,8 +270,6 @@ class regression():
             self.add_models(models=models, data=data, 
                             na=na, engine=engine, *args, **kws)
 
-# *** frontend
-# **** core
 
     def add_models(self, models, data=None, na='omit',
                    engine='r', *args, **kws):
@@ -283,14 +290,7 @@ class regression():
         self.__build_coef_df__()
         # 
         self.__run_regressions__(models, *args, **kws)
-        # 
-        # this must be after running the regression and keep this order
-        # self.__build_variables_df__()
-        # self.__get_var_group__()
-        # self.__coefs_default__()
 
-
-# **** summary
 
     def summary(self, models=None, *args, **kws):
         '''
@@ -385,16 +385,6 @@ class regression():
         if not isinstance(models, dict ):
             models = {model:model for model in models}
 
-        # basic table
-        # save latex table
-        # if output_format=='latex' or fn:
-        #     tab_latex=(
-        #         self.
-        #         __get_summary_df__(output_collect=True, *args, **kws)
-        #         # .select_cols(names={'term':'term'}|models )
-        #     )
-        #     print(tab_latex)
-        # # 
         tab=(
             self.
             __get_summary_df__(output_collect=True, *args, **kws)
@@ -416,8 +406,15 @@ class regression():
             for format in output_format:
                 if format=='latex':
                     kws.pop('fn', None)
-                    self.__tolatex__(tab=tab, fn=f"{fn_root}.tex",
-                                     *args, **kws)
+                    # need this line b/c first line is '' and it
+                    # causes an error if grouping rows using
+                    # add_row_group
+                    if 'vcov' in kws.keys():
+                        kws_latex = kws.copy()
+                        kws_latex.pop("vcov")
+                    tabt=tab.rename_cols(columns={"":"Covariate"}, tolower=False)
+                    self.__tolatex__(tab=tabt, fn=f"{fn_root}.tex",
+                                     *args, **kws_latex)
                 if format=='csv':
                     tabt=tab.bind_row(eDataFrame({'':[kws["stars"]]}))
                     tabt.to_csv(f"{fn_root}.csv", sep=';', index=False, decimal='.')
@@ -463,7 +460,6 @@ class regression():
         )
         return est
 
-# **** predict
 
     def predict(self,
                 models=None,
@@ -501,7 +497,6 @@ class regression():
         return pred
 
 
-
     def newdata(self,
                 mods=None,
                 predictor=None,
@@ -519,8 +514,6 @@ class regression():
                            )
         return newdata
         
-    
-# **** plots
 
     def plot_coef(self,
                   x='estimate',
@@ -1147,8 +1140,6 @@ class regression():
         g.plot()
         return g
 
-    
-# **** print
 
     def print(self, models=None, regex=None, *args, **kws):
         '''
@@ -1201,7 +1192,6 @@ class regression():
         return res if res else None
 
 
-# **** get
     def get_info(self, model=None):
         '''
         Input
@@ -1226,16 +1216,13 @@ class regression():
         return list(coeflabels)
         
 
-# **** others
-
     def build_formula(self, output, inputs, interactions=None, clusters=None):
         mu=models_utils()
         return mu.build_formula(output=output,
                                 inputs=inputs,
                                 interactions=interactions,
                                 clusters=clusters)
-# *** backend
-# **** core/dispatcher
+
 
     def __run_regressions__(self, models, *args, **kws):
         for label, model in models.items():
@@ -1249,13 +1236,7 @@ class regression():
                                         engine  = self.engine[label],
                                         *args, **kws)
             )
-            # for idx, (formula, family, data) in enumerate(zip(self.formula[label],
-            #                                                   self.family[label],
-            #                                                   self.data[label])):
-            #     tmp = self.__run_dispatcher__(idx, label, formula, family, data,
-            #                               *args, **kws)
-            #     tmp['depvar']
-            #     tab = pd.concat([tab, tmp], axis=0, ignore_index=True)
+
 
     def __run_dispatcher__(self, idx, label, formula, family, data, engine,
                            *args, **kws):
@@ -1344,6 +1325,7 @@ class regression():
             )
              coefs[group]=list(unique_vars)
         return coefs
+
 
     def __get_var_group__(self):
         res_final=eDataFrame()
@@ -1701,6 +1683,7 @@ class regression():
             # 
             self.variables=self.variables.bind_row(res)
 
+
     def __get_categorical_term_string__(self, model, term):
         vartype=(
             self
@@ -1732,9 +1715,6 @@ class regression():
         return res
 
 
-# **** estimation
-# ***** gaussian
-
     def __run_gaussianr__(self, idx, formula, label, data, *args, **kws):
         fit = stats.lm(formula, data=data, family='gaussian')
         mod = pd.DataFrame({'idx'          :idx,
@@ -1757,8 +1737,6 @@ class regression():
                             })
         return mod
 
-    
-# ***** binomial
 
     def __run_binomialr__(self, idx, formula, label, data, *args, **kws):
         fit = stats.glm(formula, data=data, family='binomial')
@@ -1783,8 +1761,6 @@ class regression():
         return mod
 
 
-# ***** multinomial
-
     def __run_multinomialr__(self, idx, formula, label, data, *args, **kws):
         fit = nnet.multinom(formula, data=data)
         mod = pd.DataFrame({'idx'          :idx,
@@ -1807,9 +1783,6 @@ class regression():
                             })
         return mod
 
-
-# **** summary
-# ***** core
 
     def __tolatex__(self, tab, fn, *args, **kws):
         stars=kws.get("stars", None)
@@ -1859,7 +1832,6 @@ class regression():
         res=self.__summaryr__(*args, **kws)
         return res
        
-
 
     def __summaryr__(self, *args, **kws):
         # self.__reprr__(*args, **kws)
@@ -1936,8 +1908,6 @@ class regression():
         return res
 
 
-# ***** Gaussian
-
     def __get_r_lm_summary_tidy__(self, fit):
         # res = ru.df2pandas(broom.tidy_lm(fit, conf_int=True))
         res = ru.df2pandas((broomh.tidy_add_term_labels(broomh.tidy_and_attach(fit))))
@@ -1978,7 +1948,6 @@ class regression():
         res = np.sqrt(np.mean(e**2))
         return res
 
-# ***** Binomial
 
     def __get_r_binomial_summary_tidy__(self, fit):
         # res = ru.df2pandas(broom.tidy_glm(fit, conf_int=True))
@@ -2022,7 +1991,6 @@ class regression():
         res = np.sqrt(np.mean(e**2))
         return res
 
-# ***** Multinomial
 
     def __get_r_multinomial_summary_tidy__(self, fit):
         res = ru.df2pandas(broom.tidy_multinom(fit, conf_int=True))
@@ -2066,7 +2034,6 @@ class regression():
         res = np.sqrt(np.mean(e**2))
         return res
 
-# **** predict
 
 
     def __get_models_containing_variable__(self, predictor):
@@ -2077,7 +2044,6 @@ class regression():
                 models += [row['label']]
         return models
 
-# **** plots
 
 
     def __plot_coef_prepare_data__(self, models,
@@ -2428,7 +2394,6 @@ class regression():
         return res
 
 
-# **** print
 
     def __print_header_info__(self, labels=None):
         self.__print_line__()
@@ -2448,21 +2413,12 @@ class regression():
         print(f"====================================", flush=True)
 
         
-# **** get
 
     def __get_variables__(self, formula):
         formula=re.sub(pattern=' ', repl='', string=formula)
         vars = re.split("~|\+|\||\*", formula)
         vars = [v for v in vars if v!='']
         return vars
-
-    # def __get_data__(self, formula, na):
-    #     vars = self.__get_variables__(formula)
-    #     if na=='omit':
-    #         res = self.data[vars].dropna(subset=None, axis=0)
-    #         omitted = [index for index, row in
-    #                    self.data[vars].iterrows() if row.isnull().any()]
-    #     return res, omitted
 
 
     def __get_info__(self, model):
@@ -2493,7 +2449,6 @@ class regression():
                                 })
         return tmp
 
-# **** set
 
     def __set_order_coefs__(self, models=None, coefs=None):
         if not models:
@@ -2566,8 +2521,6 @@ class regression():
         self.labels += list(models.keys())
         self.models += list(models.keys())
 
-# **** build
-# ***** build coef dict 
 
     def __build_coef_dict__(self):
         self.coefs_dict = {}
@@ -2707,7 +2660,6 @@ class regression():
             self.coefs_dict[model]['interactions'][group]+=terms_list
 
 
-# ***** build coef dict expand categories
 
     def __build_coef_dict_expand_categories__(self):
         coefs_dict_exp = {}
@@ -2768,7 +2720,6 @@ class regression():
 
 
 
-# ***** others
 
     def __build_coef_df__(self):
         d=self.coefs_dict_exp
@@ -2839,9 +2790,6 @@ class regression():
         return res
 
 
-# **** others
-# ** Old
-# *** plot
     def plot(self,
              model=None,
              terms=None,
@@ -2910,6 +2858,7 @@ class regression():
     def dev_off(self):
         grd.dev_off()
 
+
     def __regression__(self, formula, family, na,  *args, **kws):
         self.engine=engine
         if self.engine=='python':
@@ -2953,7 +2902,6 @@ class regression():
                 mods = self.regression[model]['fit']
         return mods
 
-# *** Ancillary
 
     def __check_multinomial__(self, models):
         '''
@@ -2976,267 +2924,6 @@ class regression():
         if multinomial and not notmultinomial:
             self.multinomial=True
                 
-
-
-# ** Python Engine (old/to remove)
-# *** Regression
-
-
-    def __run_gaussian__(self, *args, **kws):
-        print("Gaussian regression not implemented yet")
-
-    def __run_multinomial__(self, *args, **kws):
-        print("Multinomial regression not implemented yet")
-
-    def __run_binomial__(self, *args, **kws):
-        formulas = kws.get('formulas', None)
-        if not formulas:
-            formulas = {'Model 1':kws.get('formula', None)}
-        tab=pd.DataFrame()
-        for idx, (label, formula) in enumerate(formulas.items()):
-            mod = glm(formula, data=self.data, family=family.Binomial())
-            fit = mod.fit()
-            tmp = self.__get_est_df__(mod, fit, idx, label, formula)
-            tab=pd.concat([tab, tmp], axis=0, ignore_index=True)
-        return tab
-        
-
-# *** Summary
-
-    def __get_summary1__(self, fit):
-        tab=fit.summary2().tables[1].reset_index( drop=False)
-        tab.rename(columns={'index':'term'}, inplace=True)
-        return eDataFrame(tab)
-
-
-    def  __get_summary2__(self, fit):
-        tab=summary_col(fit, stars=True).tables[0]
-        tab = pd.DataFrame(tab).reset_index( drop=False)
-        tab.rename(columns={'index':'term'}, inplace=True)
-        return eDataFrame(tab)
-
-
-    def  __get_summary3__(self, mod, fit, digits=4):
-        summ = self.__get_summary1__(fit)
-        depvar=mod.endog_names
-        res = (summ
-               .rename(columns={'P>|z|':'pvalue'}, inplace=False)
-               .mutate({'Coef': lambda x: round(x['Coef.'], digits).astype(str)})
-               .case_when('Coef.', {
-                   f"(pvalue<0.001)": f"Coef+'***'",
-                   f"(pvalue<0.01)": f"Coef+'**'",
-                   f"(pvalue<0.05)": f"Coef+'*'",
-                   f"(pvalue<0.1)": f"Coef+'.'",
-                   f"(pvalue>0.1)": f"Coef",
-               })
-               .mutate({'ci': lambda x: [f"({round(xlower, digits)}, {round(xupper, digits)})" for
-                                         xlower, xupper in zip(x['[0.025'], x['0.975]'])]})
-               .filter(['term', 'Coef.', 'ci'])
-               .pivot_longer(id_vars='term', value_vars=None,
-                             var_name='stat', value_name=depvar,
-                             ignore_index=False)
-               .reset_index(drop=False)
-               .sort_values(['index', 'stat'], ascending=True)
-               .case_when('term', {
-                   f"(stat=='ci')": f"''",
-                   f"(stat=='Coef.')": f"term",
-               })
-               .reset_index(drop=True)
-               .drop(['index', 'stat'], axis=1)
-               )
-        return eDataFrame(res)
-
-        
-
-    def table(self, model_names='label', ci=True,
-              include_stats=['r2', 'bic', 'Obs'],
-              stars=True, labels=None):
-        '''
-        Create table with all models
-        
-        Input
-           model_names a string with 'label', 'depvar', 'both'
-        '''
-        tab_final = pd.DataFrame()
-        for i, (idx, row) in enumerate(self.reg.iterrows()):
-            if ci:
-                tab = row.summ3
-            else:
-                tab = row.summ_default
-            depvar=row['mod'].endog_names
-            info=f"{row.label}"
-            tab = (tab
-                   .replace({'term':{'':np.nan }}, regex=False)
-                   .fillna(method='ffill')
-                   .assign(estimate=['mean', 'se']*(int(tab.shape[0]/2)))
-                   # .append({'term':"RMSE",
-                   #          'estimate':'zz',
-                   #          depvar:row.rmse}, ignore_index=True)
-                   .rename(columns={depvar:info}, inplace=False)
-                   )
-            if i==0:
-                tab_final=tab
-            else:
-                tab_final = (tab_final
-                             .merge(tab, how='outer', on=['term', 'estimate'])
-                             )
-        terms = []
-        for term_before, term_after in zip(tab_final.term[0:-1],
-                                           tab_final.term[1:]):
-            if term_before==term_after:
-                terms.append(term_after)
-            else:
-                terms.append("")
-        terms.append("")
-        tab_final['term'] = terms
-        # 
-        # get stats
-        if include_stats:
-            assert all([stat in self.reg.columns for stat in include_stats]),(
-                "Stats in 'include_stat' was not computed"
-            )
-            stats = (self.reg
-                 .filter(['label']+include_stats)
-                 .melt(id_vars='label', value_vars=None,
-                       var_name=None, value_name='value', col_level=None)
-                 .pivot_table(values='value', index='variable', columns='label', aggfunc="sum")
-                 .reset_index( drop=False)
-                 .rename(columns={'variable':'term'}, inplace=False)
-                 )
-            tab_final=pd.concat([tab_final, stats], axis=0)
-                
-        if model_names=='label':
-            info=f"{row.label}"
-        elif model_names=='depvar':
-            info=f"{depvar}"
-        elif model_names=='both':
-            info=f"{row.label} ({depvar})"
-        tab_final=(tab_final
-                   .drop(['estimate'], axis=1))
-        if labels:
-            tab_final = (tab_final
-                         .replace({'term':labels} , regex=True, inplace=False)
-                         .fillna("")
-                         )
-        #
-        if not stars:
-           tab_final = tab_final.replace({"\**":""} , regex=True, inplace=False) 
-        return eDataFrame(tab_final)
-
-    def pull(self, model_index=None):
-        res = eDataFrame()
-        if not model_index:
-            model_index = list(range(self.reg.nrow))
-        for idx in model_index:
-            rest = self.reg.loc[idx, 'summ_tidy']
-            rest['label'] = self.reg.loc[idx, 'label']
-            res = res.bind_row(rest)
-        return res
-
-    def predict_python(self, newdata, model_index=1):
-        '''
-        Get predicted values
-
-        Input:
-           newdata data frame with the same columns used to run the regression
-
-        Output:
-            DataFrame with predicted values
-
-        '''
-        fit = self.reg["fit"][model_index-1]
-        pred = fit.get_prediction(newdata)
-        pred_mean = eDataFrame({"pred":pred.predicted_mean})
-        ci = eDataFrame(pred.conf_int(), columns=['pred_lower',
-                                                  'pred_upper'])
-        pred=(newdata
-              .bind_col(pred_mean,  ignore_index=False)
-              .bind_col(ci,  ignore_index=False) )
-        return eDataFrame(pred)
-        
-# *** Plots
-    def __plot_coef_python__(self, model_index=1, sort=True, title=None, labels=None):
-        '''
-        Plot regression coefficients
-
-        Input
-           model_index the index of the info in the regression object
-           sort boolean, if true the values are sorted in the plot
-           title string, the title of the plot
-           labels dict, the labels of the variables. Accepts regular expression.
-        '''
-        tab = self.reg.summ_tidy[model_index-1].loc[lambda x:
-                                              ~x['term'].str.contains(".tercept")]
-        if sort:
-            tab = tab.sort_values(['Coef.'], ascending=True)
-        if labels:
-            tab = tab.replace({'term':labels} , regex=True, inplace=False)
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=[10, 6], tight_layout=True)
-        #
-        ax.errorbar(tab['Coef.'], tab['term'], xerr=tab['Std.Err.'], fmt='.k')
-        ax.axvline(0, ymin=0, ymax=1, color='red', linestyle='--', linewidth=1)
-        # grid
-        ax.grid(b=None, which='major', axis='both', linestyle='-', alpha=.3)
-        ax.set_axisbelow(True) # to put the grid below the plot
-        #
-        plt.subplots_adjust(top=.78)
-        xcoord=-.0
-        ycoord=1.01
-        yoffset=.07
-        ax.annotate(title, xy=(xcoord, ycoord),  xytext=(xcoord, ycoord),
-                    xycoords='axes fraction', size=10, alpha=.6)
-        plt.ion()
-        plt.show()
-        return ax
-
-
-    def __plot_pred_python__(self, x, newdata=None, model_index=1,
-                  linecolor='black', show_pts=True, pts_color='black',
-                  label=None, grid=True, legend=True,
-                  ci_linetype="--", ci_color='grey',
-                  figsize=[10, 6], ax=None):
-        '''
-        Plot predicted values
-        '''
-        # 
-        if not ax:
-            fig, ax = plt.subplots(nrows=1, ncols=1,
-                                   figsize=figsize, tight_layout=True)
-        #
-        pred = self.predict_python(newdata, model_index=model_index)
-        xpred = pred[x]
-        ax.plot(xpred, pred.pred, color=linecolor, label=label)
-        ax.plot(xpred, pred.pred_lower, color=ci_color, linestyle=ci_linetype)
-        ax.plot(xpred, pred.pred_upper, color=ci_color, linestyle=ci_linetype)
-        ax.fill_between(x=xpred, y1=pred.pred_lower, y2=pred.pred_upper,
-                        color=ci_color, alpha=.3)
-        if show_pts:
-            xpts = self.data[x]
-            y = self.reg['mod'][model_index-1].endog_names
-            ypts = self.data[y]
-            ax.scatter(xpts, ypts, color=pts_color, alpha=.4)
-        # -------
-        # Splines (axes lines)
-        # -------
-        ax.spines['bottom'].set_visible(True)
-        ax.spines['left'].set_visible(True)
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        if grid:
-            # grid
-            ax.grid(b=None, which='major', axis='both',
-                    linestyle='-', alpha=.3)
-            ax.set_axisbelow(True) # to put the grid below the plot
-        if legend:
-            ax.legend()
-
-        return ax
-
-
-    
-
-
-# ** draft
 
     def __get_summary_tidy_and_merge_coef_r_coef_dict__(self):
         tmp=(
@@ -3322,42 +3009,6 @@ class regression():
         )
         return res
  
-    # def __add_ordered_coefs__(self, tab, coef_labels=None,
-    #                           coef_wrap=None, wrap_char=None):
-    #     if not coef_labels:
-    #         coef_labels=self.coefs_dict_exp
-    #     order= self.__plot_coef_order_terms__(
-    #         coef_labels=coef_labels,
-    #         coef_wrap=coef_wrap,
-    #         wrap_char=wrap_char
-    #     )
-    #     res=(
-    #         eDataFrame({'coef_labels': order, "order":range(1, len(order)+1)})
-    #         .join(tab, how='left',
-    #               left_on=["coef_labels"],
-    #               right_on=["terms_dict"])
-    #         .mutate_categorical(var='coef_labels', cats=order[::-1],
-    #                             ordered=True, wrap=False)
-    #         .mutate_case({
-    #             'value_label_final': {
-    #                 f"pd.isna(value_label_final)": "copy(coef_labels)",
-    #                 True:f"copy(value_label_final)"
-    #             }
-    #          })
-    #     )
-    #     cats=(
-    #         res
-    #         . sort_values(['order'], ascending=True)
-    #         .select_cols(names=['value_label_final', 'order'])
-    #         .drop_duplicates()
-    #         .value_label_final
-    #         .values
-    #         .tolist()
-    #     )
-    #     res=res.mutate_categorical(var='value_label_final', cats=cats[::-1],
-    #                                ordered=True, wrap=False)
-    #     return res
-
 
     def __plot_coef_order_terms__(self, 
                                   coef_labels=None,
@@ -3599,9 +3250,9 @@ class pca():
 
 
 # * Power and Sample size
-# ** class
 
 class power():
+    
     def __init__(self,
                  diff,
                  alpha=0.05,
@@ -3674,327 +3325,6 @@ class power():
         if type=='2prop':
             self.data = self.__2prop__()
 
-
-
-# ** methods
-# *** default
-
-    def __str__(self):
-        print(self.data, flush=True)
-        return None
-
-    def __repr__(self):
-        print(self.data, flush=True)
-        return ''
-
-
-    
-# *** plot
-
-    def plot(self, cost_per_observation=None, design='both'):
-        '''
-        Plot the results of the power analysis
-
-        # Input 
-        # -----
-        cost_per_observation  number indicating the cost per
-                              observation. If provided,
-                              plot the total cost.
-
-        design    string. It can be,
-                  - 'fixed'      plot only the fixed design
-                  - 'sequential' plot only the sequential design
-                  - 'both'       Default. Plot the fixed and the
-                                 sequential design
-        '''
-        if self.type=='2prop':
-            ax = self.__plot_2prop__(cost_per_observation, design)
-        return ax
-
-
-    def __plot_2prop__(self, cost_per_observation, design):
-
-        vars=['prop1', 'prop2', 'sample_size_group1', 'sample_size_group2',
-              'design', 'sample_size_group1_H1expected', 
-              'diff', 'peek']
-        # collecting data to plot 
-        # ----------------------- 
-        tab=self.__plot_select_design__(design)
-        tab=(
-            tab
-            .select_cols(names=vars)
-            .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
-                                                    'sample_size_group2'],
-                          var_name='group', value_name='sample_size',
-                          ignore_index=True)
-            .mutate_type(col2type={'diff': str} )
-            .mutate_case({
-                 'Treatment group': {
-                     f"(group=='sample_size_group1' )": "0 (e.g., control)", 
-                     f"(group=='sample_size_group2' )": "1 (e.g., treatment)",
-                   }
-             })
-            .combine(cols=['peek', 'diff'], colname='group_seq_design',
-                     sep='_', remove=False)
-        )
-        # 
-        # 
-        tab_maximum = self.get_sample_size_max(design='Fixed design')
-        # 
-        extra_columns={}
-        if cost_per_observation:
-            tab_maximum=(
-                tab_maximum   
-                .mutate({
-                    'Cost': lambda col: round(col['ntotal']*
-                                              cost_per_observation, 2),
-                })
-                .mutate_rowwise({'Cost': lambda col: f"$ {col['Cost']}"})
-            )
-            extra_columns={"Cost":"Cost"}
-        tab_maximum=tab_maximum.drop_cols(names='ntotal')
-        tab_maximum=self.__get_main_columns__(tab_maximum,
-                                              extra_columns=extra_columns)
-
-        x = "prop2"
-        y = "sample_size"
-        color='diff'
-        shape='design'
-        size='`Treatment group`'
-        group_seq_design='group_seq_design'
-        twotailed = 'Yes' if self.two_tail else "No"
-        labx= latex2exp.TeX("Proportion of 'positive' outcome cases (Y=1) "+\
-                            'in the group of interest ($\pi_t$)')
-        laby='Sample size required to detect the difference'
-        labcolor= latex2exp.TeX('Group difference ($\\pi_t - \\pi_c$)')
-        labshape='Design'
-        title = "Sample size calculation"
-        subtitle = latex2exp.TeX("Info:  "+
-                    f"$\\alpha$: {self.alpha}; "
-                    f"Power ($\\beta$): {self.power}; "+
-                    f"Test : {self.type}; "+
-                    f"Two-sided : {self.two_tail}; "+
-                    f"Ratio between sample sizes in each group : {self.ratio}"
-                    )
-        # Plot 
-        # ----
-        g = gg.ggplot(tab)
-        if design in ['fixed', 'both']:
-            g = self.__plot_2prop_fixed_design__(g, x, y, color, shape, size, tab)
-        if design in ['sequence', 'both']:
-            g = self.__plot_2prop_sequence_design__(g, x, y,
-                                                    color, shape, size, 
-                                                    group_seq_design,
-                                                    tab,
-                                                    design)
-            # 
-        g = (
-            g
-            + gg.labs(
-                x        = labx,
-                y        = laby,
-                color    = labcolor, 
-                shape    = labshape,
-                fill     = robj.NULL,
-                linetype = robj.NULL,
-                title    = title,
-                subtitle = subtitle,
-                caption  = robj.NULL
-                )
-            # + gg.scale_size_manual(cols)
-            + gg.scale_colour_brewer(palette="Set1") 
-            + gg.theme_bw()
-            + ggtheme()
-            + ggguides()
-        )
-
-        # table 
-        # -----
-        tab_maximum=self.__plot_select_design__(tab=tab_maximum, design=design)
-        gtab = gridExtra.tableGrob(tab_maximum, rows = robj.NULL)
-        layout = '''
-        A
-        A
-        B'''
-
-        g=patchwork.wrap_plots(A=g ,B=gtab, design=layout)
-        print(g, flush=True)
-        return g
-
-
-    def __plot_2prop_fixed_design__(self, g, x, y, color, shape, size, tab):
-        g = (
-            g
-            + gg.geom_point(gg.aes_string(x=x, y=y,
-                                          colour=color,
-                                          shape=shape,
-                                          group=size
-                                          ),
-                             size=3.5, alpha=.4, position="identity",
-                            data=tab.query(f"design=='Fixed design'")) 
-            + gg.geom_line(gg.aes_string(x=x, y=y, group=robj.NULL, colour=color),
-                           size=.6,
-                            data=tab.query(f"design=='Fixed design'")) 
-        )
-        return g
-
-    def __plot_2prop_sequence_design__(self, g, x, y,
-                                       color, shape, size, 
-                                       group_seq_design,
-                                       tab,
-                                       design):
-        tab_expected=eDataFrame()
-        if design in ['sequence', 'both']:
-            tab_expected=(
-                tab
-                .query(f"design=='Group sequence'")
-                .select_cols(names=['prop2', 'sample_size_group1_H1expected',
-                                    'design', 'diff'])
-                .mutate_rowwise({'design': lambda col: f"{col['design']} (expected)"})
-                .mutate({'group_seq_design': lambda col: col['diff']})
-                .drop_duplicates()
-            )
-        # 
-        alpha=.4 if design=='sequence' else .1
-        g = (
-            g
-            + gg.geom_point(gg.aes_string(x=x, y=y,
-                                          colour=color,
-                                          shape=shape,
-                                          group=size
-                                          ),
-                             size=2.5, alpha=alpha, position="identity",
-                            data=tab.query(f"design!='Fixed design'")) 
-            + gg.geom_line(gg.aes_string(x=x, y=y, group=group_seq_design, colour=color),
-                           size=.6, alpha=alpha, linetype=2,
-                           data=tab.query(f"design!='Fixed design'")) 
-            # 
-            + gg.geom_point(gg.aes_string(x=x, y='sample_size_group1_H1expected',
-                                          shape=shape,
-                                          colour=color),
-                           size=3, alpha=alpha+.1, linetype=1,
-                           data=tab_expected) 
-            + gg.geom_line(gg.aes_string(x=x, y='sample_size_group1_H1expected',
-                                         group=group_seq_design, colour=color),
-                           size=.6, alpha=alpha+.1, linetype=1,
-                           data=tab_expected) 
-        )
-        return g
-
-
-    def __plot_select_design__(self, design=None, tab=None):
-        if design=='fixed':
-            design=['Fixed design']
-            # 
-        elif design=='sequence':
-            design=['Group sequence']
-            # 
-        elif design=='both':
-            design=['Group sequence', 'Fixed design']
-            # 
-        if tab is None:
-            res=self.data.select_rows(query=f"design=={design}")
-        else:
-            res=tab.select_rows(query=f"Design=={design}")
-        return res
-        
-    # def __plot_2prop__(self):
-    #     group_diff_label='Group difference ($\pi_t - \pi_c$)'
-    #     taba = (
-    #         self
-    #         .data
-    #         .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
-    #                                                 'sample_size_group2'],
-    #                       var_name='Group', value_name='Sample size', ignore_index=True)
-    #         .replace({'Group':{'sample_size_group1':"Reference (e.g. control group)",
-    #                            'sample_size_group2':'Interest (e.g. treatment group)'}} ,
-    #                  regex=False, inplace=False)
-    #         .rename(columns={'diff':group_diff_label}, inplace=False)
-    #         .mutate({group_diff_label: lambda col: round(col[group_diff_label], 4)})
-    #     )
-    #     tab=taba.query(f"design=='Single stop'")
-    #     # 
-    #     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=[10, 6], tight_layout=True)
-    #     sns.scatterplot(x='prop2', y='Sample size', data=tab,
-    #                     style='Group', hue=group_diff_label, palette='RdBu',s=70,
-    #                     ax=ax)
-    #     sns.lineplot(x='prop2', y='Sample size', data=tab,
-    #                     style='Group', hue=group_diff_label, palette='RdBu',
-    #                     ax=ax, alpha=.3, legend=False)
-    #     # 
-    #     ax.set_xlabel("Proportion of 'positive' outcome cases (Y=1) "+\
-    #                   'in the group of interest ($\pi_t$)')
-    #     ax.set_ylabel('Sample size required to detect the difference')
-    #     # 
-    #     # grid
-    #     ax.grid(b=None, which='major', axis='both', linestyle='-', alpha=.3)
-    #     ax.set_axisbelow(True) # to put the grid below the plot
-    #     # legend
-    #     handles, labels = ax.get_legend_handles_labels()
-    #     leg = ax.legend(loc='upper right')
-    #     leg._legend_box.align = "left"
-    #     # -------
-    #     # Splines (axes lines)
-    #     # -------
-    #     ax.spines['bottom'].set_visible(True)
-    #     ax.spines['left'].set_visible(True)
-    #     ax.spines['right'].set_visible(False)
-    #     ax.spines['top'].set_visible(False)
-    #     title = "Sample size calculation"
-    #     subtitle = ("Info:  "+
-    #                 f"$\\alpha$: {self.alpha}; "+
-    #                 f"Power ($\\beta$): {self.power}; "+
-    #                 f"Test : {self.type}; "+
-    #                 f"Two-sided : {self.two_tail}; "+
-    #                 f"Ratio between sample sizes in each group : {self.ratio}"
-    #                 )
-
-
-    #     # tabgd=taba.query(f"design=='Group sequence'")
-    #     # print(tabgd)
-    #     # sns.scatterplot(x='prop2', y='Sample size', data=tabgd,
-    #     #                 hue=group_diff_label, palette='RdBu',s=20,
-    #     #                 legend=False,
-    #     #                 alpha=.1,
-    #     #                 ax=ax)
-    #     # -----
-    #     # Title
-    #     # -----
-    #     plt.subplots_adjust(top=.78)
-    #     xcoord=-.07
-    #     ycoord=1.13
-    #     yoffset=.07
-    #     ax.annotate(title, xy=(xcoord, ycoord),
-    #                xytext=(xcoord, ycoord), xycoords='axes fraction',
-    #                        size=15, alpha=.6)
-    #     ax.annotate(subtitle, xy=(xcoord, ycoord-yoffset),
-    #                xytext=(xcoord, ycoord-yoffset), xycoords='axes fraction',
-    #                        size=11, alpha=.6)
-    #     # maximum value
-    #     max_sample_sizes = (
-    #         tab
-    #         .groupby([group_diff_label, 'Group'])
-    #         .apply(lambda x: x.nlargest(1, columns=['Sample size']))
-    #     )
-    #     for idx, row in max_sample_sizes.iterrows():
-    #         x = row['prop2']
-    #         y = row['Sample size']
-    #         group = row['Group']
-    #         # 
-    #         va = 'bottom' if 'Reference' in group else 'top'
-    #         txt = f"Max: {int(row['Sample size']):,}\n({group})"
-    #         txt = f'\n{txt}' if va == 'top' else f"{txt}\n"
-    #         color='red' if va == 'top' else 'green'
-    #         # 
-    #         ax.scatter(x, y, s=60, color=color)
-    #         ax.text(x, y, s=txt,
-    #                 ha='center', va=va, ma='center',
-    #                 fontdict=dict(weight='normal', style='italic',
-    #                               color=color, fontsize=10, alpha=1))
-    #     return ax
-        
-
-# *** misc
 
     def get_design(self, value_group1, diff, raw_fit=False, summary=True):
         '''
@@ -4077,10 +3407,9 @@ class power():
         )
         return tab_maximum
 
-        
-# ** methods (hidden)
-# *** 2prop
 
+    # 2 prop 
+    # ------
     def __2prop__(self):
         prop1s=self.__2prop_get_prop1__()
         res=eDataFrame()
@@ -4094,6 +3423,7 @@ class power():
 
                     res = res.bind_row(tmp)
         return res
+
 
     def __2prop_seq_design__(self,
                              prop1,
@@ -4193,6 +3523,7 @@ class power():
               )
         return tab
 
+
     def __2prop_get_prop1__(self):
         if not self.type2prop['prop1']:
             prop1s = np.array([0.01] +
@@ -4207,8 +3538,254 @@ class power():
         return prop1s
 
 
+    # plot 
+    # ----
+    def plot(self, cost_per_observation=None, design='both'):
+        '''
+        Plot the results of the power analysis
 
-# *** misc
+        # Input 
+        # -----
+        cost_per_observation  number indicating the cost per
+                              observation. If provided,
+                              plot the total cost.
+
+        design    string. It can be,
+                  - 'fixed'      plot only the fixed design
+                  - 'sequential' plot only the sequential design
+                  - 'both'       Default. Plot the fixed and the
+                                 sequential design
+        '''
+        if self.type=='2prop':
+            ax = self.__plot_2prop__(cost_per_observation, design)
+        return ax
+
+
+    def __plot_2prop__(self, cost_per_observation, design):
+
+        vars=['prop1', 'prop2', 'sample_size_group1', 'sample_size_group2',
+              'design', 'sample_size_group1_H1expected', 
+              'diff', 'peek']
+        # collecting data to plot 
+        # ----------------------- 
+        tab=self.__plot_select_design__(design)
+        tab=(
+            tab
+            .select_cols(names=vars)
+            .pivot_longer(id_vars=None, value_vars=['sample_size_group1',
+                                                    'sample_size_group2'],
+                          var_name='group', value_name='sample_size',
+                          ignore_index=True)
+            .mutate_type(col2type={'diff': str} )
+            .mutate_case({
+                 'Treatment group': {
+                     f"(group=='sample_size_group1' )": "0 (e.g., control)", 
+                     f"(group=='sample_size_group2' )": "1 (e.g., treatment)",
+                   }
+             })
+            .combine(cols=['peek', 'diff'], colname='group_seq_design',
+                     sep='_', remove=False)
+        )
+        # 
+        # 
+        tab_maximum = self.get_sample_size_max(design='Fixed design')
+        # 
+        extra_columns={}
+        if cost_per_observation:
+            tab_maximum=(
+                tab_maximum   
+                .mutate({
+                    'Cost': lambda col: round(col['ntotal']*
+                                              cost_per_observation, 2),
+                })
+                .mutate_rowwise({'Cost': lambda col: f"$ {col['Cost']}"})
+            )
+            extra_columns={"Cost":"Cost"}
+        tab_maximum=tab_maximum.drop_cols(names='ntotal')
+        tab_maximum=self.__get_main_columns__(tab_maximum,
+                                              extra_columns=extra_columns)
+
+        x = "prop2"
+        y = "sample_size"
+        color='diff'
+        shape='design'
+        fill = 'diff'
+        size='`Treatment group`'
+        group_seq_design='group_seq_design'
+        twotailed = 'Yes' if self.two_tail else "No"
+        labx= latex2exp.TeX("Proportion of 'positive' outcome cases (Y=1) "+\
+                            'in the group of interest ($\pi_t$)')
+        laby='Sample size required to detect the difference'
+        labcolor= latex2exp.TeX('Group difference ($\\pi_t - \\pi_c$)')
+        labfill=latex2exp.TeX('Group difference ($\\pi_t - \\pi_c$)')
+        labshape='Design'
+        title = "Sample size calculation"
+        subtitle = latex2exp.TeX(
+            "Info:  "+
+            f"$\\alpha$: {self.alpha}; "
+            f"Power ($\\beta$): {self.power}; "+
+            f"Test : {self.type}; "+
+            f"Two-sided : {self.two_tail}; "+
+            f"Ratio between sample sizes in each group : {self.ratio}"
+        )
+        # Plot 
+        # ----
+        g = gg.ggplot(tab)
+        if design in ['sequence', 'both']:
+            g = self.__plot_2prop_sequence_design__(g, x, y,
+                                                    color, shape, size, 
+                                                    fill,
+                                                    group_seq_design,
+                                                    tab,
+                                                    design)
+        if design in ['fixed', 'both']:
+            g = self.__plot_2prop_fixed_design__(g, x, y, color, shape, size, fill, tab)
+
+        g = (
+            g
+            + gg.scale_shape_manual(values=[22,24,21])
+            + gg.labs(
+                x        = labx,
+                y        = laby,
+                color    = labcolor, 
+                shape    = labshape,
+                fill     = labfill,
+                linetype = 'd',
+                title    = title,
+                subtitle = subtitle,
+                caption  = robj.NULL
+                )
+            # + gg.scale_size_manual(cols)
+            # + gg.scale_colour_brewer(palette="Set1") 
+            # + gg.scale_shape_discrete() 
+            + gg.theme_bw()
+            + ggtheme()
+            + ggguides()
+        )
+
+        # table 
+        # -----
+        tab_maximum=self.__plot_select_design__(tab=tab_maximum, design=design)
+        gtab = gridExtra.tableGrob(tab_maximum, rows = robj.NULL)
+        layout = '''
+        A
+        A
+        B'''
+
+        g=patchwork.wrap_plots(A=g ,B=gtab, design=layout)
+        print(g, flush=True)
+        return g
+
+
+    def __plot_2prop_fixed_design__(self, g, x, y, color, shape, size, fill, tab):
+        g = (
+            g
+            + gg.geom_line(gg.aes_string(x=x, y=y, group=robj.NULL, color=fill),
+                           # color='black',
+                           size=.6,
+                           data=tab.query(f"design=='Fixed design'")) 
+            + gg.geom_point(gg.aes_string(x=x, y=y,
+                                          shape=shape,
+                                          fill=fill,
+                                          group=size
+                                          ),
+                            # fill='black',
+                            color='white',
+                             size=3.5, position="identity",
+                            data=tab.query(f"design=='Fixed design'")) 
+        )
+        return g
+
+
+    def __plot_2prop_sequence_design__(self, g, x, y,
+                                       color, shape, size, 
+                                       fill,
+                                       group_seq_design,
+                                       tab,
+                                       design):
+        tab_expected=eDataFrame()
+        if design in ['sequence', 'both']:
+            tab_expected=(
+                tab
+                .query(f"design=='Group sequence'")
+                .select_cols(names=['prop2', 'sample_size_group1_H1expected',
+                                    'design', 'diff'])
+                .mutate_rowwise({
+                    'design': lambda col: f"{col['design']} (expected)"
+                })
+                .mutate({
+                    'group_seq_design': lambda col: col['diff']}
+                        )
+                .drop_duplicates()
+            )
+        # 
+        alpha=.4 if design=='sequence' else .1
+        g = (
+            g
+            + gg.geom_line(gg.aes_string(x=x, y=y,
+                                         group=group_seq_design,
+                                         color=fill,
+                                         ),
+                           # colour='gray',
+                           size=.6, linetype=2,
+                           data=tab.query(f"design!='Fixed design'")) 
+            + gg.geom_point(gg.aes_string(x=x, y=y,
+                                          shape=shape,
+                                          fill=fill,
+                                          group=size
+                                          ),
+                            color='white',
+                            # fill='gray',
+                            size=2.5, position="identity",
+                            data=tab.query(f"design!='Fixed design'")) 
+            # 
+            + gg.geom_line(gg.aes_string(x=x, y='sample_size_group1_H1expected',
+                                         group=group_seq_design,
+                                         color=fill
+                                         ),
+                           # colour='gray',
+                           size=.6, linetype=1,
+                           data=tab_expected) 
+            + gg.geom_point(gg.aes_string(x=x, y='sample_size_group1_H1expected',
+                                          fill=fill,
+                                          shape=shape,
+                                          ),
+                            color='white',
+                            # fill='gray',
+                            size=3, linetype=1,
+                            data=tab_expected) 
+        )
+        return g
+
+
+    def __plot_select_design__(self, design=None, tab=None):
+        if design=='fixed':
+            design=['Fixed design']
+            # 
+        elif design=='sequence':
+            design=['Group sequence']
+            # 
+        elif design=='both':
+            design=['Group sequence', 'Fixed design']
+            # 
+        if tab is None:
+            res=self.data.select_rows(query=f"design=={design}")
+        else:
+            res=tab.select_rows(query=f"Design=={design}")
+        return res
+        
+
+    # hidden methods 
+    # --------------
+    def __str__(self):
+        print(self.data, flush=True)
+        return None
+
+
+    def __repr__(self):
+        print(self.data, flush=True)
+        return ''
+
 
     def __get_main_columns__(self, tab, extra_columns={}):
         tab=(
@@ -4564,6 +4141,7 @@ class rtools():
         pred_data = pred_data.rename_cols(columns=cols, tolower=False)
         # print(pred_data.names())
         return pred_data
+
 
 # * Utils
 

@@ -1,8 +1,11 @@
+README.org
 setup.py
+pandasci/TAGS
 pandasci/__init__.py
 pandasci/cai.py
 pandasci/ds.py
 pandasci/models.py
+pandasci/power.py
 pandasci/rutils.py
 pandasci/webscraping.py
 pandasci.egg-info/PKG-INFO
@@ -10,3 +13,7 @@ pandasci.egg-info/SOURCES.txt
 pandasci.egg-info/dependency_links.txt
 pandasci.egg-info/requires.txt
 pandasci.egg-info/top_level.txt
+pandasci/__pycache__/__init__.cpython-39.pyc
+pandasci/__pycache__/ds.cpython-39.pyc
+pandasci/data/survey.py
+tests/modelsr.py
